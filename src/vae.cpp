@@ -6,318 +6,335 @@
 #include <string>
 #include <vector>
 
-#include "ggml-cpu.h"
+#include "backend.h"
 #include "ggml.h"
 
 namespace uniflow {
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Tensor -> f32 helper (handles F32 / F16 GGUF tensors).
-// ---------------------------------------------------------------------------
-std::vector<float> tensor_to_f32(const struct ggml_tensor *t) {
+constexpr int kLatentDim = 128;
+constexpr int kHop = 480;
+constexpr size_t kMaxGraphSize = 1u << 14;
+
+// Snake: y = x + sin(x * exp(a))^2 * inv_exp(b); a/b stored log-scale in GGUF.
+// x: [T, C], exp_a/inv_b: [1, C]
+struct ggml_tensor *snake(struct ggml_context *ctx, struct ggml_tensor *x,
+                          struct ggml_tensor *exp_a, struct ggml_tensor *inv_b) {
+    struct ggml_tensor *xa = ggml_mul(ctx, x, exp_a);
+    struct ggml_tensor *s = ggml_sin(ctx, xa);
+    struct ggml_tensor *s2 = ggml_mul(ctx, s, s);
+    return ggml_add(ctx, x, ggml_mul(ctx, s2, inv_b));
+}
+
+// Conv1d + bias. w: [K, IC, OC], x: [T, IC] → [Tout, OC]
+struct ggml_tensor *conv1d(struct ggml_context *ctx, struct ggml_tensor *w, struct ggml_tensor *b,
+                           struct ggml_tensor *x, int stride, int pad, int dil) {
+    struct ggml_tensor *y = ggml_conv_1d(ctx, w, x, stride, pad, dil);
+    y = ggml_reshape_2d(ctx, y, y->ne[0], y->ne[1]);
+    if (b) {
+        struct ggml_tensor *b2d = ggml_reshape_2d(ctx, b, 1, b->ne[0]);
+        y = ggml_add(ctx, y, b2d);
+    }
+    return y;
+}
+
+// ConvTranspose via GEMM + col2im (Metal-friendly; ggml_conv_transpose_1d asserts p0==0).
+// w_perm: [IC, K*OC], x: [T, IC] → [Tout, OC]
+struct ggml_tensor *conv_t1d(struct ggml_context *ctx, struct ggml_tensor *w_perm,
+                             struct ggml_tensor *b, struct ggml_tensor *x, int stride, int pad,
+                             int oc) {
+    struct ggml_tensor *xt = ggml_cont(ctx, ggml_transpose(ctx, x));  // [IC, T]
+    struct ggml_tensor *col = ggml_mul_mat(ctx, w_perm, xt);          // [K*OC, T]
+    struct ggml_tensor *y = ggml_col2im_1d(ctx, col, stride, oc, pad);
+    if (b) {
+        struct ggml_tensor *b2d = ggml_reshape_2d(ctx, b, 1, b->ne[0]);
+        y = ggml_add(ctx, y, b2d);
+    }
+    return y;
+}
+
+void tensor_to_f32(struct ggml_tensor *t, std::vector<float> &out) {
     const int64_t n = ggml_nelements(t);
-    std::vector<float> out(static_cast<size_t>(n));
+    out.resize(static_cast<size_t>(n));
     if (t->type == GGML_TYPE_F32) {
-        std::memcpy(out.data(), t->data, static_cast<size_t>(n) * sizeof(float));
+        ggml_backend_tensor_get(t, out.data(), 0, static_cast<size_t>(n) * sizeof(float));
     } else if (t->type == GGML_TYPE_F16) {
-        ggml_fp16_to_fp32_row(static_cast<const ggml_fp16_t *>(t->data), out.data(), n);
+        std::vector<ggml_fp16_t> tmp(static_cast<size_t>(n));
+        ggml_backend_tensor_get(t, tmp.data(), 0, static_cast<size_t>(n) * sizeof(ggml_fp16_t));
+        ggml_fp16_to_fp32_row(tmp.data(), out.data(), n);
     } else {
         throw std::runtime_error("vae: unsupported tensor dtype");
     }
-    return out;
-}
-
-// A 1-D activation buffer in channels-first layout: data[c * T + t].
-struct Tensor1d {
-    std::vector<float> data;
-    int C = 0;
-    int T = 0;
-
-    Tensor1d() = default;
-    Tensor1d(int c, int t) : data(static_cast<size_t>(c) * t, 0.0f), C(c), T(t) {}
-
-    float &at(int c, int t) { return data[static_cast<size_t>(c) * T + t]; }
-    float at(int c, int t) const { return data[static_cast<size_t>(c) * T + t]; }
-};
-
-// ---------------------------------------------------------------------------
-// Weight containers.
-// ---------------------------------------------------------------------------
-
-// Regular Conv1d. Weight flat layout matches torch [Cout, Cin, K] (row-major),
-// which is identical to the GGUF/ggml element order (ne = [K, Cin, Cout]).
-struct Conv1d {
-    std::vector<float> w;   // [Cout * Cin * K]
-    std::vector<float> b;   // [Cout] (empty if no bias)
-    int Cout = 0;
-    int Cin = 0;
-    int K = 0;
-    int pad = 0;
-    int dilation = 1;
-    bool has_bias = false;
-
-    float weight(int o, int i, int k) const {
-        return w[(static_cast<size_t>(o) * Cin + i) * K + k];
-    }
-};
-
-// ConvTranspose1d. Weight flat layout matches torch [Cin, Cout, K] (row-major),
-// identical to GGUF element order (ne = [K, Cout, Cin]).
-struct ConvT1d {
-    std::vector<float> w;   // [Cin * Cout * K]
-    std::vector<float> b;   // [Cout]
-    int Cin = 0;
-    int Cout = 0;
-    int K = 0;
-    int stride = 1;
-    int pad = 0;
-    bool has_bias = false;
-
-    float weight(int i, int o, int k) const {
-        return w[(static_cast<size_t>(i) * Cout + o) * K + k];
-    }
-};
-
-// SnakeBeta activation. alpha/beta stored in LOG scale in the GGUF; exp() applied
-// at runtime.
-struct Snake {
-    std::vector<float> alpha;  // [C], log scale
-    std::vector<float> beta;   // [C], log scale
-    int C = 0;
-};
-
-struct ResidualUnit {
-    Snake s1;
-    Conv1d c7;  // k=7, dilated
-    Snake s2;
-    Conv1d c1;  // k=1
-};
-
-struct DecoderBlock {
-    Snake snake;      // pre-activation
-    ConvT1d up;       // upsampling transpose conv
-    ResidualUnit res[3];  // dilations 1, 3, 9
-    int stride = 1;
-};
-
-// ---------------------------------------------------------------------------
-// CPU kernels.
-// ---------------------------------------------------------------------------
-
-Tensor1d conv1d_forward(const Tensor1d &x, const Conv1d &c) {
-    // stride = 1 for all Conv1d layers in this decoder.
-    const int Tin = x.T;
-    const int Tout = Tin + 2 * c.pad - c.dilation * (c.K - 1);
-    Tensor1d y(c.Cout, Tout);
-    for (int o = 0; o < c.Cout; ++o) {
-        const float bias = c.has_bias ? c.b[o] : 0.0f;
-        for (int t = 0; t < Tout; ++t) {
-            float acc = bias;
-            for (int i = 0; i < c.Cin; ++i) {
-                for (int k = 0; k < c.K; ++k) {
-                    const int in_t = t - c.pad + k * c.dilation;
-                    if (in_t >= 0 && in_t < Tin) {
-                        acc += c.weight(o, i, k) * x.at(i, in_t);
-                    }
-                }
-            }
-            y.at(o, t) = acc;
-        }
-    }
-    return y;
-}
-
-Tensor1d conv_transpose_1d_forward(const Tensor1d &x, const ConvT1d &c) {
-    const int Tin = x.T;
-    const int Tout = (Tin - 1) * c.stride - 2 * c.pad + c.K;
-    Tensor1d y(c.Cout, Tout);
-    // Initialize with bias.
-    if (c.has_bias) {
-        for (int o = 0; o < c.Cout; ++o) {
-            for (int t = 0; t < Tout; ++t) {
-                y.at(o, t) = c.b[o];
-            }
-        }
-    }
-    for (int i = 0; i < c.Cin; ++i) {
-        for (int t = 0; t < Tin; ++t) {
-            const float xv = x.at(i, t);
-            const int base = t * c.stride - c.pad;
-            for (int k = 0; k < c.K; ++k) {
-                const int out_t = base + k;
-                if (out_t >= 0 && out_t < Tout) {
-                    for (int o = 0; o < c.Cout; ++o) {
-                        y.at(o, out_t) += c.weight(i, o, k) * xv;
-                    }
-                }
-            }
-        }
-    }
-    return y;
-}
-
-// snake: y = x + (1 / (beta + 1e-9)) * sin(x * alpha)^2, with alpha/beta in log
-// scale (exp applied here).
-void snake_forward(Tensor1d &x, const Snake &s) {
-    for (int c = 0; c < s.C; ++c) {
-        const float alpha = std::exp(s.alpha[c]);
-        const float beta = std::exp(s.beta[c]);
-        const float inv_beta = 1.0f / (beta + 1e-9f);
-        for (int t = 0; t < x.T; ++t) {
-            const float v = x.at(c, t);
-            const float sn = std::sin(v * alpha);
-            x.at(c, t) = v + inv_beta * sn * sn;
-        }
-    }
-}
-
-Tensor1d residual_forward(const Tensor1d &x, const ResidualUnit &r) {
-    Tensor1d h = x;
-    snake_forward(h, r.s1);
-    h = conv1d_forward(h, r.c7);
-    snake_forward(h, r.s2);
-    h = conv1d_forward(h, r.c1);
-    // Residual add (shapes match: same channels, same T).
-    for (size_t i = 0; i < h.data.size(); ++i) {
-        h.data[i] += x.data[i];
-    }
-    return h;
-}
-
-Tensor1d decoder_block_forward(const Tensor1d &x, const DecoderBlock &blk) {
-    Tensor1d h = x;
-    snake_forward(h, blk.snake);
-    h = conv_transpose_1d_forward(h, blk.up);
-    h = residual_forward(h, blk.res[0]);
-    h = residual_forward(h, blk.res[1]);
-    h = residual_forward(h, blk.res[2]);
-    return h;
 }
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-// Impl.
-// ---------------------------------------------------------------------------
-
 struct VaeDecoder::Impl {
-    Impl(const std::string &path, int nt) : model(path), n_threads(nt) { load(); }
+    explicit Impl(const std::string &path, int /*n_threads*/)
+        : bp(global_backend_pair()),
+          model(path, bp.backend),
+          sched(backend_sched_new(bp, kMaxGraphSize)),
+          derived_ctx(nullptr),
+          derived_buf(nullptr),
+          graph_ctx(nullptr),
+          graph_buf(nullptr),
+          graph(nullptr),
+          graph_input(nullptr),
+          graph_output(nullptr),
+          graph_T(0) {
+        build_derived_weights();
+        std::fprintf(stderr, "[vae] StableVAE decode via sched on %s (has_gpu=%d)\n",
+                     ggml_backend_name(bp.backend), bp.has_gpu ? 1 : 0);
+    }
 
-    GgufModel model;
-    int n_threads;
-
-    Conv1d conv_in;                 // decoder.layers.0
-    std::vector<DecoderBlock> blocks;  // decoder.layers.1..4
-    Snake snake_out;                // decoder.layers.5
-    Conv1d conv_out;                // decoder.layers.6 (no bias)
-
-    // Load a Conv1d (torch weight [Cout, Cin, K], GGUF ne = [K, Cin, Cout]).
-    Conv1d load_conv1d(const std::string &prefix, int pad, int dilation, bool expect_bias) {
-        Conv1d c;
-        const struct ggml_tensor *w = model.tensor(prefix + ".weight");
-        c.K = static_cast<int>(w->ne[0]);
-        c.Cin = static_cast<int>(w->ne[1]);
-        c.Cout = static_cast<int>(w->ne[2]);
-        c.w = tensor_to_f32(w);
-        c.pad = pad;
-        c.dilation = dilation;
-        if (expect_bias && model.has_tensor(prefix + ".bias")) {
-            c.b = tensor_to_f32(model.tensor(prefix + ".bias"));
-            c.has_bias = true;
+    ~Impl() {
+        if (graph_ctx) {
+            ggml_backend_sched_reset(sched);
+            ggml_free(graph_ctx);
+            free(graph_buf);
         }
-        return c;
+        if (sched) ggml_backend_sched_free(sched);
+        if (derived_buf) ggml_backend_buffer_free(derived_buf);
+        if (derived_ctx) ggml_free(derived_ctx);
     }
 
-    // Load a ConvTranspose1d (torch weight [Cin, Cout, K], GGUF ne = [K, Cout, Cin]).
-    ConvT1d load_convt1d(const std::string &prefix, int stride, int pad) {
-        ConvT1d c;
-        const struct ggml_tensor *w = model.tensor(prefix + ".weight");
-        c.K = static_cast<int>(w->ne[0]);
-        c.Cout = static_cast<int>(w->ne[1]);
-        c.Cin = static_cast<int>(w->ne[2]);
-        c.w = tensor_to_f32(w);
-        c.stride = stride;
-        c.pad = pad;
-        if (model.has_tensor(prefix + ".bias")) {
-            c.b = tensor_to_f32(model.tensor(prefix + ".bias"));
-            c.has_bias = true;
+    BackendPair &bp;
+    GgufModelGPU model;
+    ggml_backend_sched_t sched;
+
+    struct ggml_context *derived_ctx;
+    ggml_backend_buffer_t derived_buf;
+
+    // Precomputed snake: exp(alpha), 1/(exp(beta)+eps) as [1, C]
+    struct ggml_tensor *blk_sa[4]{};
+    struct ggml_tensor *blk_sb[4]{};
+    struct ggml_tensor *res_s1a[4][3]{};
+    struct ggml_tensor *res_s1b[4][3]{};
+    struct ggml_tensor *res_s2a[4][3]{};
+    struct ggml_tensor *res_s2b[4][3]{};
+    struct ggml_tensor *snake_out_a = nullptr;
+    struct ggml_tensor *snake_out_b = nullptr;
+
+    // Permuted conv-transpose weights [IC, K*OC] F16
+    struct ggml_tensor *ct_w[4]{};
+    int ct_stride[4]{};
+    int ct_pad[4]{};
+    int ct_oc[4]{};
+    int ct_ic[4]{};
+    int ct_k[4]{};
+
+    // Graph cache
+    struct ggml_context *graph_ctx;
+    uint8_t *graph_buf;
+    struct ggml_cgraph *graph;
+    struct ggml_tensor *graph_input;
+    struct ggml_tensor *graph_output;
+    int graph_T;
+    std::vector<float> scratch_in;
+
+    void alloc_snake_pair(const std::string &prefix, struct ggml_tensor **a_out,
+                          struct ggml_tensor **b_out) {
+        std::vector<float> raw_a;
+        tensor_to_f32(model.tensor(prefix + ".alpha"), raw_a);
+        const int C = static_cast<int>(raw_a.size());
+        *a_out = ggml_new_tensor_2d(derived_ctx, GGML_TYPE_F32, 1, C);
+        *b_out = ggml_new_tensor_2d(derived_ctx, GGML_TYPE_F32, 1, C);
+        ggml_set_name(*a_out, (prefix + ".exp_a").c_str());
+        ggml_set_name(*b_out, (prefix + ".inv_b").c_str());
+    }
+
+    void fill_snake(struct ggml_tensor *a, struct ggml_tensor *b, const std::string &prefix) {
+        std::vector<float> raw_a, raw_b;
+        tensor_to_f32(model.tensor(prefix + ".alpha"), raw_a);
+        tensor_to_f32(model.tensor(prefix + ".beta"), raw_b);
+        const int C = static_cast<int>(raw_a.size());
+        std::vector<float> ea(static_cast<size_t>(C)), ib(static_cast<size_t>(C));
+        for (int i = 0; i < C; ++i) {
+            ea[static_cast<size_t>(i)] = std::exp(raw_a[static_cast<size_t>(i)]);
+            ib[static_cast<size_t>(i)] =
+                1.0f / (std::exp(raw_b[static_cast<size_t>(i)]) + 1e-9f);
         }
-        return c;
+        ggml_backend_tensor_set(a, ea.data(), 0, ea.size() * sizeof(float));
+        ggml_backend_tensor_set(b, ib.data(), 0, ib.size() * sizeof(float));
     }
 
-    Snake load_snake(const std::string &prefix) {
-        Snake s;
-        s.alpha = tensor_to_f32(model.tensor(prefix + ".alpha"));
-        s.beta = tensor_to_f32(model.tensor(prefix + ".beta"));
-        s.C = static_cast<int>(s.alpha.size());
-        return s;
-    }
-
-    ResidualUnit load_residual(const std::string &prefix, int dilation) {
-        ResidualUnit r;
-        r.s1 = load_snake(prefix + ".layers.0");
-        r.c7 = load_conv1d(prefix + ".layers.1", (dilation * (7 - 1)) / 2, dilation, true);
-        r.s2 = load_snake(prefix + ".layers.2");
-        r.c1 = load_conv1d(prefix + ".layers.3", 0, 1, true);
-        return r;
-    }
-
-    DecoderBlock load_block(const std::string &prefix, int stride) {
-        DecoderBlock blk;
-        blk.stride = stride;
-        blk.snake = load_snake(prefix + ".layers.0");
-        blk.up = load_convt1d(prefix + ".layers.1", stride,
-                              static_cast<int>(std::ceil(stride / 2.0)));
-        blk.res[0] = load_residual(prefix + ".layers.2", 1);
-        blk.res[1] = load_residual(prefix + ".layers.3", 3);
-        blk.res[2] = load_residual(prefix + ".layers.4", 9);
-        return blk;
-    }
-
-    void load() {
-        // decoder.layers.0: Conv1d 128 -> 1024, k=7, pad=3.
-        conv_in = load_conv1d("decoder.layers.0", 3, 1, true);
-
-        // decoder.layers.1..4: DecoderBlocks. Strides are reversed encoder strides.
+    void build_derived_weights() {
         const int strides[4] = {10, 6, 4, 2};
-        blocks.clear();
-        for (int i = 0; i < 4; ++i) {
-            blocks.push_back(load_block("decoder.layers." + std::to_string(i + 1), strides[i]));
+        const size_t n_tensors = 80;
+        size_t ctx_size = ggml_tensor_overhead() * n_tensors;
+        struct ggml_init_params p = {ctx_size, nullptr, true};
+        derived_ctx = ggml_init(p);
+        if (!derived_ctx) throw std::runtime_error("vae: derived ctx init failed");
+
+        for (int bi = 0; bi < 4; ++bi) {
+            const std::string bprefix = "decoder.layers." + std::to_string(bi + 1);
+            alloc_snake_pair(bprefix + ".layers.0", &blk_sa[bi], &blk_sb[bi]);
+
+            struct ggml_tensor *w = model.tensor(bprefix + ".layers.1.weight");  // [K, OC, IC]
+            ct_k[bi] = static_cast<int>(w->ne[0]);
+            ct_oc[bi] = static_cast<int>(w->ne[1]);
+            ct_ic[bi] = static_cast<int>(w->ne[2]);
+            ct_stride[bi] = strides[bi];
+            ct_pad[bi] = static_cast<int>(std::ceil(strides[bi] / 2.0));
+            ct_w[bi] = ggml_new_tensor_2d(derived_ctx, GGML_TYPE_F16, ct_ic[bi],
+                                          ct_k[bi] * ct_oc[bi]);
+            ggml_set_name(ct_w[bi], (bprefix + ".layers.1.weight_perm").c_str());
+
+            for (int r = 0; r < 3; ++r) {
+                const std::string rp = bprefix + ".layers." + std::to_string(r + 2);
+                alloc_snake_pair(rp + ".layers.0", &res_s1a[bi][r], &res_s1b[bi][r]);
+                alloc_snake_pair(rp + ".layers.2", &res_s2a[bi][r], &res_s2b[bi][r]);
+            }
         }
+        alloc_snake_pair("decoder.layers.5", &snake_out_a, &snake_out_b);
 
-        // decoder.layers.5: final SnakeBeta on 128 channels.
-        snake_out = load_snake("decoder.layers.5");
+        derived_buf = ggml_backend_alloc_ctx_tensors(derived_ctx, bp.backend);
+        if (!derived_buf) throw std::runtime_error("vae: derived buffer alloc failed");
+        ggml_backend_buffer_set_usage(derived_buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
 
-        // decoder.layers.6: Conv1d 128 -> 1, k=7, pad=3, bias=False.
-        conv_out = load_conv1d("decoder.layers.6", 3, 1, false);
+        for (int bi = 0; bi < 4; ++bi) {
+            const std::string bprefix = "decoder.layers." + std::to_string(bi + 1);
+            fill_snake(blk_sa[bi], blk_sb[bi], bprefix + ".layers.0");
+            for (int r = 0; r < 3; ++r) {
+                const std::string rp = bprefix + ".layers." + std::to_string(r + 2);
+                fill_snake(res_s1a[bi][r], res_s1b[bi][r], rp + ".layers.0");
+                fill_snake(res_s2a[bi][r], res_s2b[bi][r], rp + ".layers.2");
+            }
+
+            // Permute CT weight [K, OC, IC] → ggml [IC, K*OC] storage for mul_mat
+            // Torch ConvTranspose weight [IC, OC, K]; GGUF flat = k + oc*K + ic*K*OC
+            // acestep dst: data[k_oc * IC + ic] with k_oc = k + oc*K (fan order)
+            std::vector<float> w_f32;
+            tensor_to_f32(model.tensor(bprefix + ".layers.1.weight"), w_f32);
+            const int K = ct_k[bi], OC = ct_oc[bi], IC = ct_ic[bi];
+            std::vector<float> perm(static_cast<size_t>(IC) * K * OC);
+            for (int ic = 0; ic < IC; ++ic) {
+                for (int k_oc = 0; k_oc < K * OC; ++k_oc) {
+                    const int k = k_oc % K;
+                    const int oc = k_oc / K;
+                    const float v = w_f32[static_cast<size_t>(k) +
+                                          static_cast<size_t>(oc) * K +
+                                          static_cast<size_t>(ic) * K * OC];
+                    perm[static_cast<size_t>(k_oc) * IC + static_cast<size_t>(ic)] = v;
+                }
+            }
+            std::vector<ggml_fp16_t> w16(perm.size());
+            ggml_fp32_to_fp16_row(perm.data(), w16.data(), static_cast<int64_t>(perm.size()));
+            ggml_backend_tensor_set(ct_w[bi], w16.data(), 0, w16.size() * sizeof(ggml_fp16_t));
+        }
+        fill_snake(snake_out_a, snake_out_b, "decoder.layers.5");
     }
 
-    std::vector<float> decode(const std::vector<float> &latent, int T) {
-        const int latent_dim = 128;
-        if (static_cast<int>(latent.size()) < T * latent_dim) {
-            throw std::runtime_error("vae: latent buffer too small for T");
-        }
+    struct ggml_tensor *res_unit(struct ggml_context *ctx, struct ggml_tensor *x, int bi, int r) {
+        const int dil = (r == 0) ? 1 : (r == 1) ? 3 : 9;
+        const std::string rp =
+            "decoder.layers." + std::to_string(bi + 1) + ".layers." + std::to_string(r + 2);
+        struct ggml_tensor *skip = x;
+        x = snake(ctx, x, res_s1a[bi][r], res_s1b[bi][r]);
+        x = conv1d(ctx, model.tensor(rp + ".layers.1.weight"), model.tensor(rp + ".layers.1.bias"), x,
+                   1, (dil * (7 - 1)) / 2, dil);
+        x = snake(ctx, x, res_s2a[bi][r], res_s2b[bi][r]);
+        x = conv1d(ctx, model.tensor(rp + ".layers.3.weight"), model.tensor(rp + ".layers.3.bias"), x,
+                   1, 0, 1);
+        return ggml_add(ctx, skip, x);
+    }
 
-        // Convert [T, 128] row-major -> channels-first [128, T].
-        Tensor1d x(latent_dim, T);
-        for (int t = 0; t < T; ++t) {
-            for (int c = 0; c < latent_dim; ++c) {
-                x.at(c, t) = latent[static_cast<size_t>(t) * latent_dim + c];
+    struct ggml_tensor *build_graph(struct ggml_context *ctx, struct ggml_tensor *latent) {
+        // latent: [T, 128]
+        struct ggml_tensor *x =
+            conv1d(ctx, model.tensor("decoder.layers.0.weight"), model.tensor("decoder.layers.0.bias"),
+                   latent, 1, 3, 1);
+
+        for (int bi = 0; bi < 4; ++bi) {
+            x = snake(ctx, x, blk_sa[bi], blk_sb[bi]);
+            x = conv_t1d(ctx, ct_w[bi],
+                         model.tensor("decoder.layers." + std::to_string(bi + 1) + ".layers.1.bias"), x,
+                         ct_stride[bi], ct_pad[bi], ct_oc[bi]);
+            for (int r = 0; r < 3; ++r) {
+                x = res_unit(ctx, x, bi, r);
             }
         }
 
-        x = conv1d_forward(x, conv_in);
-        for (const auto &blk : blocks) {
-            x = decoder_block_forward(x, blk);
-        }
-        snake_forward(x, snake_out);
-        x = conv1d_forward(x, conv_out);
+        x = snake(ctx, x, snake_out_a, snake_out_b);
+        x = conv1d(ctx, model.tensor("decoder.layers.6.weight"), nullptr, x, 1, 3, 1);
+        return x;  // [T_audio, 1]
+    }
 
-        // final_tanh = false -> Identity. Output is mono: [1, T*480].
-        // Return the single channel as a flat vector.
-        std::vector<float> out(x.data.begin(), x.data.begin() + x.T);
+    void ensure_graph(int T) {
+        if (graph_T == T) return;
+        if (graph_ctx) {
+            ggml_backend_sched_reset(sched);
+            ggml_free(graph_ctx);
+            free(graph_buf);
+            graph_ctx = nullptr;
+            graph_buf = nullptr;
+            graph_T = 0;
+        }
+
+        size_t ctx_size =
+            ggml_tensor_overhead() * kMaxGraphSize + ggml_graph_overhead_custom(kMaxGraphSize, false);
+        graph_buf = static_cast<uint8_t *>(malloc(ctx_size));
+        struct ggml_init_params p = {ctx_size, graph_buf, true};
+        graph_ctx = ggml_init(p);
+        if (!graph_ctx) throw std::runtime_error("vae: graph ctx init failed");
+
+        graph_input = ggml_new_tensor_2d(graph_ctx, GGML_TYPE_F32, T, kLatentDim);
+        ggml_set_name(graph_input, "vae_input");
+        ggml_set_input(graph_input);
+
+        graph_output = build_graph(graph_ctx, graph_input);
+        ggml_set_name(graph_output, "vae_output");
+        ggml_set_output(graph_output);
+
+        graph = ggml_new_graph_custom(graph_ctx, kMaxGraphSize, false);
+        ggml_build_forward_expand(graph, graph_output);
+
+        ggml_backend_sched_reset(sched);
+        if (bp.has_gpu) {
+            ggml_backend_sched_set_tensor_backend(sched, graph_input, bp.backend);
+        }
+        if (!ggml_backend_sched_alloc_graph(sched, graph)) {
+            throw std::runtime_error("vae: graph alloc failed");
+        }
+        graph_T = T;
+        std::fprintf(stderr, "[vae] graph nodes=%d T=%d splits=%d on %s\n", ggml_graph_n_nodes(graph),
+                     T, ggml_backend_sched_get_n_splits(sched), ggml_backend_name(bp.backend));
+    }
+
+    std::vector<float> decode(const std::vector<float> &latent, int T) {
+        if (static_cast<int>(latent.size()) < T * kLatentDim) {
+            throw std::runtime_error("vae: latent buffer too small for T");
+        }
+        ensure_graph(T);
+
+        // DiT [T, C] row-major → ggml [T, C] storage (c*T + t)
+        scratch_in.resize(static_cast<size_t>(T) * kLatentDim);
+        for (int c = 0; c < kLatentDim; ++c) {
+            for (int t = 0; t < T; ++t) {
+                scratch_in[static_cast<size_t>(c) * T + t] =
+                    latent[static_cast<size_t>(t) * kLatentDim + c];
+            }
+        }
+        ggml_backend_tensor_set(graph_input, scratch_in.data(), 0,
+                                scratch_in.size() * sizeof(float));
+
+        if (ggml_backend_sched_graph_compute(sched, graph) != GGML_STATUS_SUCCESS) {
+            throw std::runtime_error("vae: graph compute failed");
+        }
+
+        const int T_audio = static_cast<int>(graph_output->ne[0]);
+        const int C_out = static_cast<int>(graph_output->ne[1]);
+        if (C_out != 1) {
+            throw std::runtime_error("vae: expected mono output channels=1, got " +
+                                     std::to_string(C_out));
+        }
+        if (T_audio != T * kHop) {
+            std::fprintf(stderr, "[vae] WARNING: T_audio=%d expected %d\n", T_audio, T * kHop);
+        }
+
+        std::vector<float> out(static_cast<size_t>(T_audio));
+        ggml_backend_tensor_get(graph_output, out.data(), 0, out.size() * sizeof(float));
         return out;
     }
 };

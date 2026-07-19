@@ -2,7 +2,9 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <stdexcept>
+#include <strings.h>
 #include <thread>
 
 #include "ggml-cpu.h"
@@ -31,17 +33,26 @@ BackendPair backend_init(const char* name) {
 
     BackendPair bp = {nullptr, nullptr, nullptr, false};
 
-    // Check for explicit backend selection via environment
+    // Check for explicit backend selection via environment.
+    // GGML_BACKEND accepts: Metal|GPU|CUDA|CPU, or a ggml device name (e.g. MTL0).
     const char* env_backend = std::getenv("GGML_BACKEND");
-
-    // Try to get the best available backend (Metal on macOS, CUDA on Linux, etc.)
     if (env_backend) {
-        bp.backend = ggml_backend_init_by_name(env_backend, nullptr);
+        if (strcasecmp(env_backend, "CPU") == 0) {
+            bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+        } else if (strcasecmp(env_backend, "Metal") == 0 ||
+                   strcasecmp(env_backend, "GPU") == 0 ||
+                   strcasecmp(env_backend, "CUDA") == 0) {
+            bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr);
+        } else {
+            bp.backend = ggml_backend_init_by_name(env_backend, nullptr);
+        }
         if (!bp.backend) {
-            std::fprintf(stderr, "[%s] warning: requested backend '%s' not found\n", name, env_backend);
+            std::fprintf(stderr, "[%s] warning: requested backend '%s' not found\n", name,
+                         env_backend);
         }
     }
 
+    // Best available (Metal on macOS, CUDA on Linux, else CPU)
     if (!bp.backend) {
         bp.backend = ggml_backend_init_best();
     }

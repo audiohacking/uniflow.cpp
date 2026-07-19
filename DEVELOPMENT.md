@@ -16,12 +16,23 @@ Human listening is required for all audio quality claims.
 
 | Item | State |
 |------|--------|
-| Phase | **2 — End-to-end T2A CLI (HUMAN-CONFIRMED)** |
+| Phase | **2.5 — Metal DiT+VAE; human listen OK** |
 | Binary | `uniflow-audio` Metal/CPU with full T2A pipeline |
 | Inference | **T2A works** (0% Python runtime) |
+| Metal | **DiT + StableVAE on MTL0** (`splits=1`); T5+adapter **CPU** (audiogen pattern) |
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
-| Human WAV | `output/human_t2a_dog.wav` — **works; quality not excellent yet** |
-| Tests | `make test` → **4/4 C++ + 7/7 Python PASS** |
+| Human WAV | `output/human_t2a_dog_v2.wav` — **human: generation successful** |
+| Tests | `make test` / `uniflow_test_vae_load` PASS on Metal |
+
+### Metal stage timings (M4, 5s audio, 25 steps, seed 42)
+
+| Stage | Backend | Time |
+|-------|---------|-----:|
+| T5 | CPU | ~294 ms |
+| Adapter | CPU | ~8 ms |
+| DiT (25× CFG) | Metal | ~2.9 s (~114 ms/step) |
+| VAE decode | Metal | **~0.8 s** (was ~50 s CPU) |
+| Total | mixed | **~4.0 s** |
 
 ### Conquered (with regression tests)
 
@@ -30,14 +41,15 @@ Human listening is required for all audio quality claims.
 | ggml backend + scheduler + WAV I/O | `tests/cpp/test_{smoke,scheduler,wav_io}.cpp` |
 | GGUF converters (T5/DiT/VAE/instr) | `tests/python/test_convert_conventions.py` |
 | StableVAE decode load + length | `tests/cpp/test_vae_load.cpp` |
-| End-to-end T2A CLI → non-silent WAV | **G2 human listen pass (quality WIP)** |
+| End-to-end T2A CLI → non-silent WAV | **G2 human listen pass** |
+| Metal VAE (conv1d + col2im CT + Snake) | `test_vae_load` + human `human_t2a_dog_v2.wav` |
 
 ### Blockers / next actions
 
-1. **Quality:** stage-wise numerical parity vs Python (`scripts/dump_t2a_parity.py`) — fix largest error (adapter / DiT / VAE).
-2. Auto duration (omit `--duration`) may need duration-predictor tuning.
-3. Base/Large conversion + Q8; SE/SR/TTS later.
-4. Homebrew `sentencepiece` needs `absl_status` (CMake already links it).
+1. **Quality:** stage-wise numerical parity vs Python (`scripts/dump_t2a_parity.py`) — fix largest error (adapter / DiT / VAE). **Human listen required for every audio claim.**
+2. Optional: Metal T5/adapter (only after parity; prior Metal rewrite regressed quality).
+3. Auto duration (omit `--duration`) may need duration-predictor tuning.
+4. Base/Large conversion + Q8; SE/SR/TTS later.
 
 
 ## Weight inventory (UniFlow-Audio-v1.1-Small)
@@ -180,9 +192,11 @@ make convert-small   # DiT + VAE + instructions (+ T5 if missing)
 |------|--------|-------|
 | G0 smoke binary | passed on M4 | |
 | G1 Python T2A ref WAV | optional | `scripts/dump_t2a_parity.py` |
-| G2 C++ T2A human listen | **PASS (quality WIP)** | Human confirmed works; not excellent yet |
+| G2 C++ T2A human listen | **PASS** | `human_t2a_dog.wav` + `human_t2a_dog_v2.wav` (Metal VAE) |
 | G3 T2M | not started | |
 | G4 Q8 quality | not started | |
+
+**Policy:** every audio claim stops for human listen — no agent self-validation of quality.
 
 ## Repo layout
 
@@ -203,6 +217,7 @@ DEVELOPMENT.md This file
 | 2026-07-19 | Phase 0 scaffold + TDD + Metal smoke | Phase 0 complete |
 | 2026-07-20 | Download Small; convert GGUFs; load tests | Phase 1 complete |
 | 2026-07-20 | T2A pipeline (adapter/DiT/VAE); human_t2a_dog.wav | Phase 2 e2e works; human confirmed (quality WIP) |
+| 2026-07-20 | Metal VAE (col2im); restore CPU T5/adapter; DiT input pin | ~4s/5s audio; human confirmed `human_t2a_dog_v2.wav` |
 
 ## Contacts / links
 

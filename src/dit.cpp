@@ -1,13 +1,13 @@
 #include "dit.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <vector>
 
-#include "ggml-cpu.h"
-#include "ggml.h"
 #include "backend.h"
+#include "ggml.h"
 
 namespace uniflow {
 
@@ -47,6 +47,8 @@ struct DiT::Impl {
           n_threads(n_threads) {
         // Create scheduler for compute graphs
         sched = backend_sched_new(bp, kMaxGraphSize);
+        std::fprintf(stderr, "[dit] compute via sched on %s (has_gpu=%d)\n",
+                     ggml_backend_name(bp.backend), bp.has_gpu ? 1 : 0);
     }
 
     ~Impl() {
@@ -297,28 +299,32 @@ std::vector<float> DiT::forward(const std::vector<float> &x, int T, float timest
     ggml_build_forward_expand(graph, conv_out);
     ggml_set_output(conv_out);
 
-    // Reset scheduler and allocate graph
+    // Reset FIRST, force inputs onto GPU (avoids CPU buffer aliasing — acestep pattern), then alloc.
     ggml_backend_sched_reset(sched);
+    if (impl_->bp.has_gpu) {
+        ggml_backend_sched_set_tensor_backend(sched, x_in, impl_->bp.backend);
+        ggml_backend_sched_set_tensor_backend(sched, context_in, impl_->bp.backend);
+        ggml_backend_sched_set_tensor_backend(sched, ta_content_in, impl_->bp.backend);
+        ggml_backend_sched_set_tensor_backend(sched, positions, impl_->bp.backend);
+        ggml_backend_sched_set_tensor_backend(sched, t_freq_t, impl_->bp.backend);
+    }
     if (!ggml_backend_sched_alloc_graph(sched, graph)) {
         ggml_free(ctx);
         throw std::runtime_error("DiT::forward: failed to allocate compute graph");
     }
 
-    // Set input tensors
     ggml_backend_tensor_set(x_in, x.data(), 0, x.size() * sizeof(float));
     ggml_backend_tensor_set(context_in, context.data(), 0, context.size() * sizeof(float));
-    ggml_backend_tensor_set(ta_content_in, time_aligned_content.data(), 0, time_aligned_content.size() * sizeof(float));
+    ggml_backend_tensor_set(ta_content_in, time_aligned_content.data(), 0,
+                            time_aligned_content.size() * sizeof(float));
 
-    // Set positions
     std::vector<int32_t> pos_data(T);
     for (int i = 0; i < T; ++i) pos_data[i] = i;
     ggml_backend_tensor_set(positions, pos_data.data(), 0, pos_data.size() * sizeof(int32_t));
 
-    // Set timestep embedding
     std::vector<float> t_freq = sinusoidal_timestep_embedding(timestep, kFreqEmbedDim);
     ggml_backend_tensor_set(t_freq_t, t_freq.data(), 0, t_freq.size() * sizeof(float));
 
-    // Compute
     if (ggml_backend_sched_graph_compute(sched, graph) != GGML_STATUS_SUCCESS) {
         ggml_free(ctx);
         throw std::runtime_error("DiT::forward: graph compute failed");
