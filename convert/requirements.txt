@@ -1,0 +1,7 @@
+gguf>=0.10.0
+safetensors
+huggingface_hub
+numpy
+torch
+pyyaml
+h5py

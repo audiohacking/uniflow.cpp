@@ -1,0 +1,48 @@
+# Build artifacts
+build/
+build-*/
+*.o
+*.a
+*.so
+*.dylib
+
+# Models (downloaded / converted separately)
+models/**
+!models/.gitkeep
+models/*.gguf
+models/*.model
+models/*.bin
+models/*.safetensors
+models/*.ckpt
+
+# Output
+output/
+*.wav
+!reference/data/egs/**
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+.claude/
+
+# macOS
+.DS_Store
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+
+# Large reference dumps
+reference/dumps/
