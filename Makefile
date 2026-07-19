@@ -116,8 +116,8 @@ convert-xlarge:
 .PHONY: download-gguf download-gguf-small download-gguf-base download-gguf-large
 download-gguf: download-gguf-small
 download-gguf-small:
-	./scripts/download_gguf.sh small
+	./scripts/download_gguf.sh small F16
 download-gguf-base:
-	./scripts/download_gguf.sh base
+	./scripts/download_gguf.sh base F16
 download-gguf-large:
-	./scripts/download_gguf.sh large
+	./scripts/download_gguf.sh large Q8_0

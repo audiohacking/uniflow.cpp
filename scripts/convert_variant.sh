@@ -25,8 +25,8 @@ fi
 
 mkdir -p "${DEST}"
 
-echo "=== DiT (${VARIANT}, F16) → ${DEST}/dit.gguf ==="
-python3 "${ROOT}/convert/convert_dit.py" "${SRC}" -o "${DEST}/dit.gguf" --dtype f16 --variant "${VARIANT}"
+echo "=== DiT (${VARIANT}, F16) → ${DEST}/dit-F16.gguf ==="
+python3 "${ROOT}/convert/convert_dit.py" "${SRC}" -o "${DEST}/dit-F16.gguf" --dtype f16 --variant "${VARIANT}"
 
 if [[ ! -f "${DEST}/vae.gguf" ]]; then
   if [[ -f "${ROOT}/models/vae.gguf" ]]; then

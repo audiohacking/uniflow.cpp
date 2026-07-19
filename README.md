@@ -27,28 +27,32 @@ Requires CMake, a C++17 compiler, and (for Metal) Xcode Command Line Tools.
 
 ## Download models
 
-Packs are published as `uniflow-audio-v1.1-{small,base,large}` on Hugging Face.
-**Small is the default** (fastest to download and run).
+Packs live under `uniflow-audio-v1.1-{small,base,large}/`. DiT files use HF GGUF
+quant tags in the filename (`dit-F16.gguf`, `dit-Q8_0.gguf`, `dit-Q4_0.gguf`).
+**Small + F16 is the default.**
 
 ```bash
 # requires: pip install -U "huggingface_hub[cli]"
-./scripts/download_gguf.sh              # small
-./scripts/download_gguf.sh base
-./scripts/download_gguf.sh large
+./scripts/download_gguf.sh                 # small F16
+./scripts/download_gguf.sh base            # base F16
+./scripts/download_gguf.sh large Q8_0      # large Q8 (recommended)
+./scripts/download_gguf.sh large F16
+./scripts/download_gguf.sh large Q4_0
+./scripts/download_gguf.sh large all       # every DiT quant
 
 # or via Make
-make download-gguf         # small (default)
+make download-gguf         # small F16
 make download-gguf-base
-make download-gguf-large
+make download-gguf-large   # large Q8_0
 ```
 
 Files land in `models/uniflow-audio-v1.1-<size>/`.
 
-| Size  | DiT (approx.) | Notes                          |
-|-------|---------------|--------------------------------|
-| small | ~1.1 GB       | Default; good starting point   |
-| base  | ~1.5 GB       | Higher capacity                |
-| large | ~2.5 GB       | Highest quality, more VRAM/RAM |
+| Size  | DiT quants on HF | Notes |
+|-------|------------------|-------|
+| small | F16 | Default; good starting point |
+| base  | F16 | Higher capacity |
+| large | F16 (~2.5G), Q8_0 (~1.4G), Q4_0 (~0.8G) | Q8_0 recommended |
 
 Each pack also includes shared T5, VAE, instructions, and tokenizer (~1.4 GB).
 
@@ -60,6 +64,11 @@ Each pack also includes shared T5, VAE, instructions, and tokenizer (~1.4 GB).
   --caption "a man is speaking while a dog barks" \
   --output output/out.wav \
   --duration 5 --steps 25 --cfg 5.0 --sway -1 --seed 42
+
+# Large with Q8 DiT
+./build-metal/uniflow-audio --model large --quant Q8_0 \
+  --caption "a man is speaking while a dog barks" \
+  --output output/out.wav --duration 5
 
 # Text-to-music
 ./build-metal/uniflow-audio --model small \
@@ -74,6 +83,7 @@ Each pack also includes shared T5, VAE, instructions, and tokenizer (~1.4 GB).
 ```
 
 `--model small|base|large` looks under `models/uniflow-audio-v1.1-<size>/`.
+`--quant F16|Q8_0|Q4_0` selects `dit-<QUANT>.gguf` (auto-picks F16 → Q8_0 → Q4_0 if omitted).
 Use `--models-dir DIR` if you keep weights elsewhere.
 
 ### Useful options
@@ -82,6 +92,7 @@ Use `--models-dir DIR` if you keep weights elsewhere.
 |------|---------|-------------|
 | `--caption` | — | Prompt text (T2A / T2M) |
 | `--task` | `t2a` | `t2a` or `t2m` |
+| `--quant` | auto | DiT file: `F16`, `Q8_0`, or `Q4_0` |
 | `--duration` | model-predicted | Length in seconds |
 | `--steps` | `25` | Flow-matching steps |
 | `--cfg` | `5.0` | Classifier-free guidance |

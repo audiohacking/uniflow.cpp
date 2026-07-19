@@ -29,8 +29,10 @@ void print_usage(const char *argv0) {
         "\n"
         "Model paths (one of):\n"
         "  positional: <t5> <dit> <vae> <instructions> <spiece>\n"
-        "  --models-dir DIR   Expects DIR/{t5_encoder,dit,vae,instructions}.gguf + DIR/spiece.model\n"
+        "  --models-dir DIR   Expects DIR/{t5_encoder,vae,instructions}.gguf + DIR/spiece.model\n"
+        "                     + DIR/dit-<QUANT>.gguf (or legacy DIR/dit.gguf)\n"
         "  --model NAME       Shortcut → models/uniflow-audio-v1.1-NAME/ (after download_gguf.sh)\n"
+        "  --quant QUANT      DiT quant: F16|Q8_0|Q4_0 (default: auto)\n"
         "\n"
         "Prompt options (use ONE of):\n"
         "  --caption TEXT     Text caption for T2A/T2M (plain text; no Dasheng tags)\n"
@@ -56,12 +58,12 @@ void print_usage(const char *argv0) {
         "  GGML_BACKEND=Metal|GPU|CPU|MTL0   Force ggml backend (Metal default on Apple)\n"
         "\n"
         "Examples:\n"
-        "  %s --models-dir models --caption \"a dog barking\" --duration 5 --seed 42\n"
-        "  %s --model base --caption \"lo-fi hip hop beat\" --task t2m --steps 25\n"
+        "  %s --model small --caption \"a dog barking\" --duration 5 --seed 42\n"
+        "  %s --model large --quant Q8_0 --caption \"lo-fi hip hop beat\" --task t2m\n"
         "  %s --models-dir models --batch prompts.txt --output-dir out/\n"
         "\n"
         "Download GGUF packs (HF):\n"
-        "  ./scripts/download_gguf.sh small|base|large\n",
+        "  ./scripts/download_gguf.sh [small|base|large] [F16|Q8_0|Q4_0]\n",
         argv0, argv0, argv0, argv0, argv0, argv0, argv0);
 }
 
@@ -89,6 +91,42 @@ bool file_readable(const std::string &path) {
     if (!f) return false;
     std::fclose(f);
     return true;
+}
+
+// Normalize CLI/HF quant tags: f16 → F16, q8_0 → Q8_0, q4_0 → Q4_0.
+std::string normalize_quant(const std::string &raw) {
+    std::string s;
+    s.reserve(raw.size());
+    for (char c : raw) {
+        if (c >= 'a' && c <= 'z') {
+            s.push_back(static_cast<char>(c - 'a' + 'A'));
+        } else {
+            s.push_back(c);
+        }
+    }
+    if (s == "F16" || s == "FP16") return "F16";
+    if (s == "Q8" || s == "Q8_0") return "Q8_0";
+    if (s == "Q4" || s == "Q4_0") return "Q4_0";
+    throw std::runtime_error("--quant must be F16|Q8_0|Q4_0 (got: " + raw + ")");
+}
+
+// Prefer named dit-<QUANT>.gguf (HF GGUF convention); fall back to legacy dit.gguf.
+std::string resolve_dit_path(const std::string &models_dir, const std::string &quant_opt) {
+    if (!quant_opt.empty()) {
+        const std::string tagged = models_dir + "/dit-" + quant_opt + ".gguf";
+        if (file_readable(tagged)) return tagged;
+        throw std::runtime_error("missing DiT file: " + tagged);
+    }
+    static const char *kPrefer[] = {"F16", "Q8_0", "Q4_0"};
+    for (const char *q : kPrefer) {
+        const std::string tagged = models_dir + "/dit-" + q + ".gguf";
+        if (file_readable(tagged)) return tagged;
+    }
+    const std::string legacy = models_dir + "/dit.gguf";
+    if (file_readable(legacy)) return legacy;
+    throw std::runtime_error(
+        "no DiT GGUF in " + models_dir +
+        " (expected dit-F16.gguf / dit-Q8_0.gguf / dit-Q4_0.gguf or dit.gguf)");
 }
 
 int run_smoke_test() {
@@ -150,6 +188,7 @@ int main(int argc, char **argv) {
     std::string output_dir = ".";
     std::string models_dir;
     std::string model_variant;  // small|base|large|xlarge → models/uniflow-audio-v1.1-*/
+    std::string quant;          // F16|Q8_0|Q4_0 (empty = auto)
     bool seed_set = false;
     bool have_models = false;
 
@@ -201,6 +240,8 @@ int main(int argc, char **argv) {
                 models_dir = v;
             } else if (const char *v = need("--model")) {
                 apply_model_variant(v);
+            } else if (const char *v = need("--quant")) {
+                quant = normalize_quant(v);
             } else if (const char *v = need("--caption")) {
                 caption = v;
             } else if (const char *v = need("--batch")) {
@@ -252,10 +293,19 @@ int main(int argc, char **argv) {
             models_dir.pop_back();
         }
         cfg.t5_gguf_path = models_dir + "/t5_encoder.gguf";
-        cfg.dit_gguf_path = models_dir + "/dit.gguf";
         cfg.vae_gguf_path = models_dir + "/vae.gguf";
         cfg.instructions_gguf_path = models_dir + "/instructions.gguf";
         cfg.spiece_model_path = models_dir + "/spiece.model";
+        try {
+            cfg.dit_gguf_path = resolve_dit_path(models_dir, quant);
+        } catch (const std::exception &e) {
+            std::fprintf(stderr, "Error: %s\n", e.what());
+            if (!model_variant.empty()) {
+                std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s %s\n",
+                             model_variant.c_str(), quant.empty() ? "F16" : quant.c_str());
+            }
+            return 1;
+        }
         have_models = true;
     }
 
@@ -271,7 +321,8 @@ int main(int argc, char **argv) {
         if (!file_readable(p)) {
             std::fprintf(stderr, "Error: cannot read model file: %s\n", p.c_str());
             if (!model_variant.empty()) {
-                std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s\n", model_variant.c_str());
+                std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s %s\n",
+                             model_variant.c_str(), quant.empty() ? "F16" : quant.c_str());
             }
             return 1;
         }
