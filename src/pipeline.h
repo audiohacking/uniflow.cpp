@@ -29,6 +29,9 @@ public:
     // Generates 24 kHz mono PCM for the caption.
     std::vector<float> generate(const std::string &caption);
 
+    // Override RNG seed for the next generate() (0 = random). Used by batch CLI.
+    void set_seed(unsigned int seed);
+
 private:
     struct Impl;
     Impl *impl_;

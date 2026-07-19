@@ -160,7 +160,17 @@ make metal          # or: make cpu
 make test           # regression suite
 ```
 
-Env: `GGML_BACKEND=Metal` / `CPU` / `CUDA` to force backend (see `src/backend.cpp`).
+Env: `GGML_BACKEND=Metal` / `CPU` / `CUDA` / `MTL0` to force backend (see `src/backend.cpp`).
+
+CLI (audiogen-style, UniFlow options) — `./build-metal/uniflow-audio --help`:
+
+```bash
+./build-metal/uniflow-audio --models-dir models \
+  --caption "..." --task t2a --instruction-idx 0 \
+  --steps 25 --cfg 5.0 --sway -1 --duration 5 --seed 42 \
+  --output output/out.wav
+# batch: --batch prompts.txt --output-dir out/
+```
 
 ## Conversion policy (do not sabotage)
 

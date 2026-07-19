@@ -11,18 +11,22 @@ Portable **C++17 GGML/GGUF** inference for
 
 ## Status
 
-**T2A works on Metal** (Small GGUF). Quality is early — hear `output/human_t2a_dog.wav` after generating. See [DEVELOPMENT.md](DEVELOPMENT.md).
+**T2A works on Metal** (Small GGUF). DiT + StableVAE on GPU; T5/adapter on CPU.
+Human listen required for audio QA — see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ```bash
 git submodule update --init --recursive
 make metal
 make test
 # after make convert-small (or with existing models/*.gguf):
-./build-metal/uniflow-audio \
-  models/t5_encoder.gguf models/dit.gguf models/vae.gguf models/instructions.gguf models/spiece.model \
+./build-metal/uniflow-audio --models-dir models \
   --caption "a man is speaking while a dog barks" \
-  --output output/out.wav --steps 25 --cfg 5.0 --seed 42 --duration 5
+  --output output/out.wav --steps 25 --cfg 5.0 --sway -1 --seed 42 --duration 5
 ```
+
+CLI mirrors [audiogen.cpp](https://github.com/audiohacking/audiogen.cpp) where it fits,
+with UniFlow-specific flags (`--task`, `--instruction-idx`, `--models-dir`). Run
+`./build-metal/uniflow-audio --help` for the full list.
 
 ## Goal
 

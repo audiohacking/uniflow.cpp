@@ -70,6 +70,8 @@ struct Pipeline::Impl {
 Pipeline::Pipeline(const PipelineConfig &config) : impl_(new Impl(config)) {}
 Pipeline::~Pipeline() { delete impl_; }
 
+void Pipeline::set_seed(unsigned int seed) { impl_->config.seed = seed; }
+
 std::vector<float> Pipeline::generate(const std::string &caption) {
     auto t_all = clock::now();
 
