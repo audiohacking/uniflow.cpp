@@ -15,6 +15,9 @@ models/*.bin
 models/*.safetensors
 models/*.ckpt
 
+# HF staging / local GGUF packs (never commit weights)
+dist/
+
 # Output
 output/
 *.wav

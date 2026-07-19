@@ -21,8 +21,9 @@ Human listening is required for all audio quality claims.
 | Inference | **T2A works** (0% Python runtime) |
 | Metal | **DiT + StableVAE on MTL0** (`splits=1`); T5+adapter **CPU** (audiogen pattern) |
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
-| Human WAV | `output/human_t2a_dog_v2.wav` — **human: generation successful** |
-| Tests | `make test` / `uniflow_test_vae_load` PASS on Metal |
+| Human WAV | `output/human_t2a_dog_v2.wav`, `human_t2a_female_dog_10s.wav` — **human pass** |
+| **Active weights** | **`wsntxxn/UniFlow-Audio-v1.1-Small`** only (embed 512 / depth 20 / heads 8) |
+| HF GGUF publish | Target: [`audiohacking/uniflow-audio-gguf`](https://huggingface.co/audiohacking/uniflow-audio-gguf) (not in git) |
 
 ### Metal stage timings (M4, 5s audio, 25 steps, seed 42)
 
@@ -202,7 +203,7 @@ make convert-small   # DiT + VAE + instructions (+ T5 if missing)
 |------|--------|-------|
 | G0 smoke binary | passed on M4 | |
 | G1 Python T2A ref WAV | optional | `scripts/dump_t2a_parity.py` |
-| G2 C++ T2A human listen | **PASS** | `human_t2a_dog.wav` + `human_t2a_dog_v2.wav` (Metal VAE) |
+| G2 C++ T2A human listen | **PASS** | `human_t2a_dog*.wav`, `human_t2a_female_dog_10s.wav` |
 | G3 T2M | not started | |
 | G4 Q8 quality | not started | |
 
@@ -228,6 +229,8 @@ DEVELOPMENT.md This file
 | 2026-07-20 | Download Small; convert GGUFs; load tests | Phase 1 complete |
 | 2026-07-20 | T2A pipeline (adapter/DiT/VAE); human_t2a_dog.wav | Phase 2 e2e works; human confirmed (quality WIP) |
 | 2026-07-20 | Metal VAE (col2im); restore CPU T5/adapter; DiT input pin | ~4s/5s audio; human confirmed `human_t2a_dog_v2.wav` |
+| 2026-07-20 | 10s T2A “female talking while a dog barks” | human: not too bad / pass; accuracy later |
+| 2026-07-20 | Prep HF GGUF publish (Small) → audiohacking/uniflow-audio-gguf | needs `hf auth login` |
 
 ## Contacts / links
 
