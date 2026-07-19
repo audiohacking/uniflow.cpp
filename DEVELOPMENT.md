@@ -23,7 +23,7 @@ Human listening is required for all audio quality claims.
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
 | Human WAV | `output/human_t2a_dog_v2.wav`, `human_t2a_female_dog_10s.wav` — **human pass** |
 | **Active weights** | **`wsntxxn/UniFlow-Audio-v1.1-Small`** only (embed 512 / depth 20 / heads 8) |
-| HF GGUF publish | **[audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)** — Small + Base live; Large next |
+| HF GGUF publish | **[audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)** — Small + Base + Large live |
 
 ### Metal stage timings (M4, 5s audio, 25 steps, seed 42)
 
@@ -50,7 +50,7 @@ Human listening is required for all audio quality claims.
 1. **Quality:** stage-wise numerical parity vs Python (`scripts/dump_t2a_parity.py`) — fix largest error (adapter / DiT / VAE). **Human listen required for every audio claim.**
 2. Optional: Metal T5/adapter (only after parity; prior Metal rewrite regressed quality).
 3. Auto duration (omit `--duration`) may need duration-predictor tuning.
-4. Base/Large conversion + Q8; SE/SR/TTS later.
+4. Q8 packs; SE/SR/TTS later. Smoke-load Base/Large DiT on Metal.
 
 
 ## Weight inventory (UniFlow-Audio-v1.1-Small)
@@ -232,6 +232,7 @@ DEVELOPMENT.md This file
 | 2026-07-20 | 10s T2A “female talking while a dog barks” | human: not too bad / pass; accuracy later |
 | 2026-07-20 | Prep HF GGUF publish (Small) → audiohacking/uniflow-audio-gguf | needs `hf auth login` |
 | 2026-07-20 | Uploaded Small GGUF pack to HF | https://huggingface.co/audiohacking/uniflow-audio-gguf |
+| 2026-07-20 | Uploaded Base + Large GGUF packs; DiT arch from GGUF KV | all three variants live on HF |
 
 ## Contacts / links
 

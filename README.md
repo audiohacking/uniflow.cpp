@@ -15,17 +15,15 @@ Portable **C++17 GGML/GGUF** inference for
 Human listen required for audio QA — see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 GGUF weights: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
-(`uniflow-audio-v1.1-small/`).
+(`uniflow-audio-v1.1-{small,base,large}/`).
 
 ```bash
 git submodule update --init --recursive
 make metal
 make test
-# download Small GGUF pack (or make convert-small from upstream safetensors):
-hf download audiohacking/uniflow-audio-gguf \
-  --include "uniflow-audio-v1.1-small/*" \
-  --local-dir models
-./build-metal/uniflow-audio --models-dir models/uniflow-audio-v1.1-small \
+# download a GGUF pack (or make convert-small|base|large):
+./scripts/download_gguf.sh small   # or: base | large
+./build-metal/uniflow-audio --model small \
   --caption "a man is speaking while a dog barks" \
   --output output/out.wav --steps 25 --cfg 5.0 --sway -1 --seed 42 --duration 5
 ```
