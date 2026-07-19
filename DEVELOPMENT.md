@@ -16,32 +16,30 @@ Human listening is required for all audio quality claims.
 
 | Item | State |
 |------|--------|
-| Phase | **1 — Conversion (COMPLETE for Small T2A subset)** → next: C++ graphs |
-| Binary | `uniflow-audio` builds Metal + CPU; `--smoke-test` OK on Apple M4 |
-| Inference | **Not wired** (GGUFs ready; DiT/VAE C++ graphs still TODO) |
+| Phase | **2 — End-to-end T2A CLI (READY FOR HUMAN LISTEN)** |
+| Binary | `uniflow-audio` Metal/CPU with full T2A pipeline |
+| Inference | **T2A works** (0% Python runtime) — quality pending human gate G2 |
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
-| Reference Python | Vendored from HF Space under `reference/python/` |
-| Tests | `make test` → **3/3 C++ + 7/7 Python PASS** |
+| Human WAV | `output/human_t2a_dog.wav` (5s, seed 42, non-silent RMS≈0.58) |
+| Tests | `make test` → **4/4 C++ + 7/7 Python PASS** |
 
 ### Conquered (with regression tests)
 
 | Conquer | Test |
 |---------|------|
-| ggml backend links + runs (Metal M4) | `tests/cpp/test_smoke.cpp` |
-| Flow-match scheduler (25 steps, sway=-1, N+1 knots) | `tests/cpp/test_scheduler.cpp` |
-| 24 kHz mono WAV I/O | `tests/cpp/test_wav_io.cpp` |
-| Converter ARCH strings + no Dasheng Dit masquerade | `tests/python/test_convert_conventions.py` |
-| `dit.gguf` load: ≥800 tensors, embed_dim=512, T2A subset | same (TestDitGgufLoad) |
-| `vae.gguf` fused weight_norm (no weight_g/v) | same (TestVaeGgufLoad) |
-| `instructions.gguf` has `instr.text_to_audio_0` | same (TestInstructionsGgufLoad) |
+| ggml backend + scheduler + WAV I/O | `tests/cpp/test_{smoke,scheduler,wav_io}.cpp` |
+| GGUF converters (T5/DiT/VAE/instr) | `tests/python/test_convert_conventions.py` |
+| StableVAE decode load + length | `tests/cpp/test_vae_load.cpp` |
+| End-to-end T2A CLI → non-silent WAV | manual: see Human listen gates |
 
 ### Blockers / next actions
 
-1. **Port C++ DiT + content adapter + StableVAE decode** against Small GGUFs (Phase 2).
-2. **Numerical parity dumps** from Python `InferenceCLI` (fixed seed) before claiming audio quality.
-3. Homebrew `sentencepiece` requires linking **`absl_status`** (handled in `CMakeLists.txt`).
-4. Base/Large/XLarge conversion: same scripts with `--variant`; not run yet.
-5. HF Space `data/egs/se_*.wav` / `sr_*.wav` / `v2a_*.mp4` may be LFS stubs.
+1. **HUMAN GATE G2:** listen to `output/human_t2a_dog.wav` vs Python reference (optional `scripts/dump_t2a_parity.py`).
+2. Numerical parity dumps (T5/adapter/DiT/VAE stages) if audio sounds wrong.
+3. Auto duration (omit `--duration`) may need duration-predictor tuning.
+4. Base/Large conversion + Q8; SE/SR/TTS later.
+5. Homebrew `sentencepiece` needs `absl_status` (CMake already links it).
+
 
 ## Weight inventory (UniFlow-Audio-v1.1-Small)
 
@@ -181,9 +179,9 @@ make convert-small   # DiT + VAE + instructions (+ T5 if missing)
 
 | Gate | Status | Notes |
 |------|--------|-------|
-| G0 smoke binary | **ready for human confirm** — `make test-smoke-metal` passed on M4 | |
-| G1 Python T2A ref WAV | not started | |
-| G2 C++ ≈ Python T2A | not started | |
+| G0 smoke binary | passed on M4 | |
+| G1 Python T2A ref WAV | optional | `scripts/dump_t2a_parity.py` |
+| G2 C++ T2A human listen | **READY** | `output/human_t2a_dog.wav` — please listen |
 | G3 T2M | not started | |
 | G4 Q8 quality | not started | |
 
@@ -204,7 +202,8 @@ DEVELOPMENT.md This file
 | Date | What | Result |
 |------|------|--------|
 | 2026-07-19 | Phase 0 scaffold + TDD + Metal smoke | Phase 0 complete |
-| 2026-07-20 | Download Small; inspect; convert_dit/vae/instructions/t5; GGUF load tests | Phase 1 convert complete |
+| 2026-07-20 | Download Small; convert GGUFs; load tests | Phase 1 complete |
+| 2026-07-20 | T2A pipeline (adapter/DiT/VAE); human_t2a_dog.wav | Phase 2 ready for human listen |
 
 ## Contacts / links
 

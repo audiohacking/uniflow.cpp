@@ -19,7 +19,6 @@ add_subdirectory(third_party/ggml)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SENTENCEPIECE REQUIRED sentencepiece)
-# Homebrew sentencepiece headers pull in absl::Status; link absl explicitly.
 pkg_check_modules(ABSL_STATUS REQUIRED absl_status)
 
 add_library(uniflow_audio_core
@@ -28,6 +27,11 @@ add_library(uniflow_audio_core
     src/tokenizer.cpp
     src/scheduler.cpp
     src/wav_io.cpp
+    src/content_adapter.cpp
+    src/dit.cpp
+    src/vae.cpp
+    src/instructions.cpp
+    src/pipeline.cpp
 )
 target_include_directories(uniflow_audio_core PUBLIC
     src
@@ -61,4 +65,8 @@ if (UNIFLOW_BUILD_TESTS)
     add_executable(uniflow_test_wav_io tests/cpp/test_wav_io.cpp)
     target_link_libraries(uniflow_test_wav_io PRIVATE uniflow_audio_core)
     add_test(NAME wav_io COMMAND uniflow_test_wav_io)
+
+    add_executable(uniflow_test_vae_load tests/cpp/test_vae_load.cpp)
+    target_link_libraries(uniflow_test_vae_load PRIVATE uniflow_audio_core)
+    add_test(NAME vae_load COMMAND uniflow_test_vae_load WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif()

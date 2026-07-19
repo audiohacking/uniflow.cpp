@@ -11,15 +11,17 @@ Portable **C++17 GGML/GGUF** inference for
 
 ## Status
 
-Phase 1: **Small GGUFs converted** (T5 + DiT + VAE + instructions).  
-Full T2A C++ inference graphs still WIP — see [DEVELOPMENT.md](DEVELOPMENT.md).
+**T2A works on Metal** (Small GGUF). Quality is early — hear `output/human_t2a_dog.wav` after generating. See [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ```bash
 git submodule update --init --recursive
 make metal
-./build-metal/uniflow-audio --smoke-test
 make test
-# optional: make convert-small  # if models/uniflow-small/ is present
+# after make convert-small (or with existing models/*.gguf):
+./build-metal/uniflow-audio \
+  models/t5_encoder.gguf models/dit.gguf models/vae.gguf models/instructions.gguf models/spiece.model \
+  --caption "a man is speaking while a dog barks" \
+  --output output/out.wav --steps 25 --cfg 5.0 --seed 42 --duration 5
 ```
 
 ## Goal
