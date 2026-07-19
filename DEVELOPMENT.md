@@ -23,7 +23,7 @@ Human listening is required for all audio quality claims.
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
 | Human WAV | `output/human_t2a_dog_v2.wav`, `human_t2a_female_dog_10s.wav` — **human pass** |
 | **Active weights** | **`wsntxxn/UniFlow-Audio-v1.1-Small`** only (embed 512 / depth 20 / heads 8) |
-| HF GGUF publish | Target: [`audiohacking/uniflow-audio-gguf`](https://huggingface.co/audiohacking/uniflow-audio-gguf) (not in git) |
+| HF GGUF publish | **[audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)** — Small pack live |
 
 ### Metal stage timings (M4, 5s audio, 25 steps, seed 42)
 
@@ -231,6 +231,7 @@ DEVELOPMENT.md This file
 | 2026-07-20 | Metal VAE (col2im); restore CPU T5/adapter; DiT input pin | ~4s/5s audio; human confirmed `human_t2a_dog_v2.wav` |
 | 2026-07-20 | 10s T2A “female talking while a dog barks” | human: not too bad / pass; accuracy later |
 | 2026-07-20 | Prep HF GGUF publish (Small) → audiohacking/uniflow-audio-gguf | needs `hf auth login` |
+| 2026-07-20 | Uploaded Small GGUF pack to HF | https://huggingface.co/audiohacking/uniflow-audio-gguf |
 
 ## Contacts / links
 

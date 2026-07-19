@@ -14,12 +14,18 @@ Portable **C++17 GGML/GGUF** inference for
 **T2A works on Metal** (Small GGUF). DiT + StableVAE on GPU; T5/adapter on CPU.
 Human listen required for audio QA — see [DEVELOPMENT.md](DEVELOPMENT.md).
 
+GGUF weights: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
+(`uniflow-audio-v1.1-small/`).
+
 ```bash
 git submodule update --init --recursive
 make metal
 make test
-# after make convert-small (or with existing models/*.gguf):
-./build-metal/uniflow-audio --models-dir models \
+# download Small GGUF pack (or make convert-small from upstream safetensors):
+hf download audiohacking/uniflow-audio-gguf \
+  --include "uniflow-audio-v1.1-small/*" \
+  --local-dir models
+./build-metal/uniflow-audio --models-dir models/uniflow-audio-v1.1-small \
   --caption "a man is speaking while a dog barks" \
   --output output/out.wav --steps 25 --cfg 5.0 --sway -1 --seed 42 --duration 5
 ```
