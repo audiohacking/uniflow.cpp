@@ -23,7 +23,7 @@ Human listening is required for all audio quality claims.
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
 | Human WAV | `output/human_t2a_dog_v2.wav`, `human_t2a_female_dog_10s.wav` — **human pass** |
 | **Active weights** | **`wsntxxn/UniFlow-Audio-v1.1-Small`** only (embed 512 / depth 20 / heads 8) |
-| HF GGUF publish | **[audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)** — Small pack live |
+| HF GGUF publish | **[audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)** — Small + Base live; Large next |
 
 ### Metal stage timings (M4, 5s audio, 25 steps, seed 42)
 

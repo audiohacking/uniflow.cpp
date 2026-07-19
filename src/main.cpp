@@ -25,10 +25,12 @@ void print_usage(const char *argv0) {
         "  %s --smoke-test\n"
         "  %s <t5.gguf> <dit.gguf> <vae.gguf> <instructions.gguf> <spiece.model> [options]\n"
         "  %s --models-dir DIR [options]\n"
+        "  %s --model small|base|large [options]\n"
         "\n"
-        "Model paths (required unless --models-dir):\n"
-        "  positional args as above, or:\n"
+        "Model paths (one of):\n"
+        "  positional: <t5> <dit> <vae> <instructions> <spiece>\n"
         "  --models-dir DIR   Expects DIR/{t5_encoder,dit,vae,instructions}.gguf + DIR/spiece.model\n"
+        "  --model NAME       Shortcut → models/uniflow-audio-v1.1-NAME/ (after download_gguf.sh)\n"
         "\n"
         "Prompt options (use ONE of):\n"
         "  --caption TEXT     Text caption for T2A/T2M (plain text; no Dasheng tags)\n"
@@ -55,9 +57,12 @@ void print_usage(const char *argv0) {
         "\n"
         "Examples:\n"
         "  %s --models-dir models --caption \"a dog barking\" --duration 5 --seed 42\n"
-        "  %s --models-dir models --task t2m --caption \"lo-fi hip hop beat\" --steps 25\n"
-        "  %s --models-dir models --batch prompts.txt --output-dir out/\n",
-        argv0, argv0, argv0, argv0, argv0, argv0);
+        "  %s --model base --caption \"lo-fi hip hop beat\" --task t2m --steps 25\n"
+        "  %s --models-dir models --batch prompts.txt --output-dir out/\n"
+        "\n"
+        "Download GGUF packs (HF):\n"
+        "  ./scripts/download_gguf.sh small|base|large\n",
+        argv0, argv0, argv0, argv0, argv0, argv0, argv0);
 }
 
 std::vector<std::string> parse_batch_file(const std::string &path) {
@@ -144,16 +149,37 @@ int main(int argc, char **argv) {
     std::string output_path = "output.wav";
     std::string output_dir = ".";
     std::string models_dir;
+    std::string model_variant;  // small|base|large|xlarge → models/uniflow-audio-v1.1-*/
     bool seed_set = false;
     bool have_models = false;
 
     int argi = 1;
+    auto apply_model_variant = [&](const std::string &v) {
+        if (v != "small" && v != "base" && v != "large" && v != "xlarge") {
+            throw std::runtime_error("--model must be small|base|large|xlarge");
+        }
+        model_variant = v;
+        models_dir = "models/uniflow-audio-v1.1-" + v;
+    };
+
     if (argi < argc && std::strcmp(argv[argi], "--models-dir") == 0) {
         if (argi + 1 >= argc) {
             std::fprintf(stderr, "missing value for --models-dir\n");
             return 1;
         }
         models_dir = argv[++argi];
+        ++argi;
+    } else if (argi < argc && std::strcmp(argv[argi], "--model") == 0) {
+        if (argi + 1 >= argc) {
+            std::fprintf(stderr, "missing value for --model\n");
+            return 1;
+        }
+        try {
+            apply_model_variant(argv[++argi]);
+        } catch (const std::exception &e) {
+            std::fprintf(stderr, "%s\n", e.what());
+            return 1;
+        }
         ++argi;
     } else if (argi + 4 < argc && argv[argi][0] != '-') {
         cfg.t5_gguf_path = argv[argi++];
@@ -173,6 +199,8 @@ int main(int argc, char **argv) {
         try {
             if (const char *v = need("--models-dir")) {
                 models_dir = v;
+            } else if (const char *v = need("--model")) {
+                apply_model_variant(v);
             } else if (const char *v = need("--caption")) {
                 caption = v;
             } else if (const char *v = need("--batch")) {
@@ -232,7 +260,7 @@ int main(int argc, char **argv) {
     }
 
     if (!have_models || cfg.t5_gguf_path.empty()) {
-        std::fprintf(stderr, "Error: provide model paths or --models-dir\n\n");
+        std::fprintf(stderr, "Error: provide --model / --models-dir / positional model paths\n\n");
         print_usage(argv[0]);
         return 1;
     }
@@ -242,6 +270,9 @@ int main(int argc, char **argv) {
           cfg.spiece_model_path}) {
         if (!file_readable(p)) {
             std::fprintf(stderr, "Error: cannot read model file: %s\n", p.c_str());
+            if (!model_variant.empty()) {
+                std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s\n", model_variant.c_str());
+            }
             return 1;
         }
     }

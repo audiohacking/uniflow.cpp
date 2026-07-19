@@ -99,7 +99,25 @@ help:
 	@echo "  make test             Run C++ + Python regression tests"
 	@echo "  make test-smoke       CLI smoke test (CPU)"
 	@echo "  make convert-t5       Convert Flan-T5 encoder only"
-	@echo "  make convert-small    Convert Small DiT+VAE+instructions (+T5 if needed)"
+	@echo "  make convert-small|base|large   Convert variant pack → dist/hf/"
+	@echo "  make download-gguf-small|base|large   Fetch GGUF pack from HF"
 	@echo "  make clean            Remove build dirs"
 	@echo ""
 	@echo "Read DEVELOPMENT.md before changing converters."
+
+# Variant converts → dist/hf/uniflow-audio-v1.1-{variant}/
+.PHONY: convert-base convert-large convert-xlarge
+convert-base:
+	./scripts/convert_variant.sh base
+convert-large:
+	./scripts/convert_variant.sh large
+convert-xlarge:
+	./scripts/convert_variant.sh xlarge
+
+.PHONY: download-gguf-small download-gguf-base download-gguf-large
+download-gguf-small:
+	./scripts/download_gguf.sh small
+download-gguf-base:
+	./scripts/download_gguf.sh base
+download-gguf-large:
+	./scripts/download_gguf.sh large

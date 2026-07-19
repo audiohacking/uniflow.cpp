@@ -5,15 +5,9 @@
 
 #include "gguf_util.h"
 
-// LayerFusionAudioDiT backbone: 10 in_blocks + 1 mid_block + 10 out_blocks,
-// embed_dim 512, 8 heads, head_dim 64. time_fusion='ada' (per-block AdaLN),
-// context_fusion='cross' (T5 content via cross-attention),
-// ta_context_fusion='add' (per-layer "time-aligned content" added after
-// self-attn, recomputed every layer from the same constant
-// time_aligned_content input), rope_mode='shared' (RoPE on self-attention
-// only), qk_norm='layernorm' (applied before RoPE), pe_method='none' (no
-// absolute position embeddings anywhere). See reference/dit.py for the full
-// trace this implementation follows.
+// LayerFusionAudioDiT: architecture read from GGUF metadata
+// (uniflow.dit_embed_dim / dit_num_heads / dit_n_in_blocks / …).
+// Small=512/8/10, Base=1024/16/12, Large=1280/20/14.
 namespace uniflow {
 
 class DiT {
@@ -21,8 +15,8 @@ public:
     explicit DiT(const std::string &gguf_path, int n_threads = 4);
     ~DiT();
 
-    int latent_dim() const;  // 128
-    int embed_dim() const;   // 512
+    int latent_dim() const;  // from GGUF (128)
+    int embed_dim() const;   // from GGUF (512/1024/1280)
 
     // x: [T, latent_dim] row-major -- the noisy latent.
     // timestep: scalar diffusion timestep, same convention as the reference
