@@ -100,10 +100,9 @@ help:
 	@echo "  make test-smoke       CLI smoke test (CPU)"
 	@echo "  make convert-t5       Convert Flan-T5 encoder only"
 	@echo "  make convert-small|base|large   Convert variant pack → dist/hf/"
-	@echo "  make download-gguf-small|base|large   Fetch GGUF pack from HF"
+	@echo "  make download-gguf    Fetch Small GGUF pack from HF (default)"
+	@echo "  make download-gguf-small|base|large"
 	@echo "  make clean            Remove build dirs"
-	@echo ""
-	@echo "Read DEVELOPMENT.md before changing converters."
 
 # Variant converts → dist/hf/uniflow-audio-v1.1-{variant}/
 .PHONY: convert-base convert-large convert-xlarge
@@ -114,7 +113,8 @@ convert-large:
 convert-xlarge:
 	./scripts/convert_variant.sh xlarge
 
-.PHONY: download-gguf-small download-gguf-base download-gguf-large
+.PHONY: download-gguf download-gguf-small download-gguf-base download-gguf-large
+download-gguf: download-gguf-small
 download-gguf-small:
 	./scripts/download_gguf.sh small
 download-gguf-base:
