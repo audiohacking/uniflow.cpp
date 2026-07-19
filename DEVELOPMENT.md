@@ -16,11 +16,11 @@ Human listening is required for all audio quality claims.
 
 | Item | State |
 |------|--------|
-| Phase | **2 — End-to-end T2A CLI (READY FOR HUMAN LISTEN)** |
+| Phase | **2 — End-to-end T2A CLI (HUMAN-CONFIRMED)** |
 | Binary | `uniflow-audio` Metal/CPU with full T2A pipeline |
-| Inference | **T2A works** (0% Python runtime) — quality pending human gate G2 |
+| Inference | **T2A works** (0% Python runtime) |
 | GGUF (Small) | `models/{t5_encoder,dit,vae,instructions}.gguf` + `spiece.model` |
-| Human WAV | `output/human_t2a_dog.wav` (5s, seed 42, non-silent RMS≈0.58) |
+| Human WAV | `output/human_t2a_dog.wav` — **works; quality not excellent yet** |
 | Tests | `make test` → **4/4 C++ + 7/7 Python PASS** |
 
 ### Conquered (with regression tests)
@@ -30,15 +30,14 @@ Human listening is required for all audio quality claims.
 | ggml backend + scheduler + WAV I/O | `tests/cpp/test_{smoke,scheduler,wav_io}.cpp` |
 | GGUF converters (T5/DiT/VAE/instr) | `tests/python/test_convert_conventions.py` |
 | StableVAE decode load + length | `tests/cpp/test_vae_load.cpp` |
-| End-to-end T2A CLI → non-silent WAV | manual: see Human listen gates |
+| End-to-end T2A CLI → non-silent WAV | **G2 human listen pass (quality WIP)** |
 
 ### Blockers / next actions
 
-1. **HUMAN GATE G2:** listen to `output/human_t2a_dog.wav` vs Python reference (optional `scripts/dump_t2a_parity.py`).
-2. Numerical parity dumps (T5/adapter/DiT/VAE stages) if audio sounds wrong.
-3. Auto duration (omit `--duration`) may need duration-predictor tuning.
-4. Base/Large conversion + Q8; SE/SR/TTS later.
-5. Homebrew `sentencepiece` needs `absl_status` (CMake already links it).
+1. **Quality:** stage-wise numerical parity vs Python (`scripts/dump_t2a_parity.py`) — fix largest error (adapter / DiT / VAE).
+2. Auto duration (omit `--duration`) may need duration-predictor tuning.
+3. Base/Large conversion + Q8; SE/SR/TTS later.
+4. Homebrew `sentencepiece` needs `absl_status` (CMake already links it).
 
 
 ## Weight inventory (UniFlow-Audio-v1.1-Small)
@@ -181,7 +180,7 @@ make convert-small   # DiT + VAE + instructions (+ T5 if missing)
 |------|--------|-------|
 | G0 smoke binary | passed on M4 | |
 | G1 Python T2A ref WAV | optional | `scripts/dump_t2a_parity.py` |
-| G2 C++ T2A human listen | **READY** | `output/human_t2a_dog.wav` — please listen |
+| G2 C++ T2A human listen | **PASS (quality WIP)** | Human confirmed works; not excellent yet |
 | G3 T2M | not started | |
 | G4 Q8 quality | not started | |
 
@@ -203,7 +202,7 @@ DEVELOPMENT.md This file
 |------|------|--------|
 | 2026-07-19 | Phase 0 scaffold + TDD + Metal smoke | Phase 0 complete |
 | 2026-07-20 | Download Small; convert GGUFs; load tests | Phase 1 complete |
-| 2026-07-20 | T2A pipeline (adapter/DiT/VAE); human_t2a_dog.wav | Phase 2 ready for human listen |
+| 2026-07-20 | T2A pipeline (adapter/DiT/VAE); human_t2a_dog.wav | Phase 2 e2e works; human confirmed (quality WIP) |
 
 ## Contacts / links
 
