@@ -38,10 +38,15 @@ npx --yes serve web -p 8080
 
 ## GitHub Pages
 
-1. Build `uniflow-web` artifacts into `web/`.
-2. Enable Pages from branch `experiment/webgpu-small-q8` (or `gh-pages`), folder `/web`
-   — or deploy `web/` via Actions.
-3. Users need a WebGPU browser and enough RAM for ~520 MB weights + WASM heap.
+Workflow: `.github/workflows/pages-webgpu.yml`
+
+1. **Settings → Pages → Build and deployment → Source = GitHub Actions** (once).
+2. On push to `main` (or **Actions → Deploy WebGPU demo → Run workflow**):
+   - **build** job: recursive submodule checkout → Emscripten + WebGPU compile → upload artifact
+   - **deploy** job: `actions/deploy-pages` only
+3. Site URL is printed on the deploy job (`environment: github-pages`).
+
+Users need a WebGPU browser and enough RAM for ~520 MB weights + WASM heap.
 
 ## API (WASM)
 
