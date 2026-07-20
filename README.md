@@ -21,6 +21,8 @@ Binary: `./build-metal/uniflow-audio` (or `build-cpu` / `build-cuda`).
 
 Requires CMake, a C++17 compiler, and (for Metal) Xcode Command Line Tools.
 
+Browser demo (WebGPU, no install): `make web` — see [web/README.md](web/README.md).
+
 ## Download models
 
 Packs live under `uniflow-audio-v1.1-{small,base,large}/`.
@@ -70,6 +72,16 @@ Small Q8 is the sweet spot for snappy demos — a 5 s clip finishes in under 4 s
 Base/Large trade a few more seconds for higher capacity. Numbers vary with
 steps, duration, and GPU; CUDA/CPU builds will differ.
 
+Measured on **NVIDIA GB10** (CUDA, unified-memory ARM SoC): same settings —
+DiT **Q8_0** + pack T5, **5 s** of audio, **25** steps, CFG **5.0**, sway **-1**.
+Generation time only (after weights loaded).
+
+| Model | Wall time | vs audio | DiT |
+|-------|-----------|----------|-----|
+| **small** Q8 | **~1.05 s** | **~4.8× realtime** | ~35 ms/step |
+| **base** Q8 | **~1.7 s** | ~2.9× realtime | ~61 ms/step |
+| **large** Q8 | **~2.3 s** | ~2.2× realtime | ~84 ms/step |
+
 ## Generate
 
 ```bash
@@ -112,11 +124,27 @@ steps, duration, and GPU; CUDA/CPU builds will differ.
 | `--sway` | `-1.0` | Sway sampling coefficient |
 | `--seed` | random | Reproducible RNG |
 | `--threads` | `4` | CPU threads for T5 |
+| `--batch FILE` | — | One caption per line → multiple outputs |
+| `--output-dir DIR` | `.` | Output directory for `--batch` |
+| `--instruction-idx N` | `0` | Instruction embedding index (0-9) |
 
 Full list: `./build-metal/uniflow-audio --help`
 
-On Apple Silicon, Metal is used by default for DiT and VAE. Force a backend with
-`GGML_BACKEND=CPU` (or `Metal` / `GPU`).
+Metal is used by default on Apple Silicon, CUDA on `build-cuda`, else CPU.
+Force a backend with `GGML_BACKEND=CPU` (or `Metal` / `CUDA` / `GPU`).
+
+## Citation
+
+If you use this in research, please cite the original UniFlow-Audio paper:
+
+```bibtex
+@article{xu2025uniflow,
+  title={UniFlow-Audio: Unified Flow Matching for Audio Generation from Omni-Modalities},
+  author={Xu, Xuenan and Mei, Jiahao and Zheng, Zihao and Tao, Ye and Xie, Zeyu and Zhang, Yaoyun and Liu, Haohe and Wu, Yuning and Yan, Ming and Wu, Wen and Zhang, Chao and Wu, Mengyue},
+  journal={arXiv preprint arXiv:2509.24391},
+  year={2025}
+}
+```
 
 ## License
 
