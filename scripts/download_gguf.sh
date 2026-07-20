@@ -24,22 +24,26 @@ case "${VARIANT}" in
     cat <<EOF
 Usage: $0 [small|base|large] [F16|Q8_0|Q4_0|all] [out_root]
 
-  small   Default size. Fastest download and inference.
-  base    Mid size.
-  large   Highest capacity (F16 / Q8_0 / Q4_0 DiT files on HF).
+Model size (folder on HF):
+  small   Default. Fastest download and inference.
+  base    Mid capacity.
+  large   Highest capacity.
 
-  F16     Default DiT precision (dit-F16.gguf).
-  Q8_0    Near-lossless 8-bit DiT (large).
-  Q4_0    Smaller 4-bit DiT (large).
-  all     Download every dit-*.gguf in the pack.
+DiT quant (filename tag; all sizes publish all three):
+  F16     Default. Full half-precision DiT (dit-F16.gguf).
+  Q8_0    Near-lossless 8-bit DiT (dit-Q8_0.gguf).
+  Q4_0    Smaller 4-bit DiT (dit-Q4_0.gguf).
+  all     Every dit-*.gguf in the pack.
 
-Downloads shared T5/VAE/instructions/tokenizer plus the selected DiT into
+Downloads shared T5/VAE/instructions/tokenizer plus the selected DiT into:
   <out_root>/uniflow-audio-v1.1-<size>/
 
 Examples:
-  $0
-  $0 large Q8_0
-  $0 large all
+  $0                         # small F16
+  $0 base Q8_0
+  $0 large Q4_0
+  $0 small all
+  $0 large Q8_0 models
 EOF
     exit 0
     ;;
@@ -68,32 +72,33 @@ fi
 mkdir -p "${DEST}"
 echo "Downloading ${REPO_ID}:${PACK} (quant=${QUANT}) → ${DEST}"
 
-SHARED=(
-  "${PACK}/t5_encoder.gguf"
-  "${PACK}/vae.gguf"
-  "${PACK}/instructions.gguf"
-  "${PACK}/spiece.model"
+# One call for shared assets + selected DiT(s).
+INCLUDE_ARGS=(
+  --include "${PACK}/t5_encoder.gguf"
+  --include "${PACK}/vae.gguf"
+  --include "${PACK}/instructions.gguf"
+  --include "${PACK}/spiece.model"
 )
 
-# Always fetch shared files.
-for f in "${SHARED[@]}"; do
-  hf download "${REPO_ID}" --include "${f}" --local-dir "${OUT_ROOT}"
-done
-
 if [[ "${QUANT}" == "all" ]]; then
-  hf download "${REPO_ID}" --include "${PACK}/dit-*.gguf" --local-dir "${OUT_ROOT}"
-  # legacy fallback if only dit.gguf exists
-  hf download "${REPO_ID}" --include "${PACK}/dit.gguf" --local-dir "${OUT_ROOT}" 2>/dev/null || true
+  INCLUDE_ARGS+=(--include "${PACK}/dit-F16.gguf")
+  INCLUDE_ARGS+=(--include "${PACK}/dit-Q8_0.gguf")
+  INCLUDE_ARGS+=(--include "${PACK}/dit-Q4_0.gguf")
 else
-  if ! hf download "${REPO_ID}" --include "${PACK}/dit-${QUANT}.gguf" --local-dir "${OUT_ROOT}"; then
-    echo "note: dit-${QUANT}.gguf missing; trying legacy dit.gguf" >&2
-    hf download "${REPO_ID}" --include "${PACK}/dit.gguf" --local-dir "${OUT_ROOT}"
-  fi
+  INCLUDE_ARGS+=(--include "${PACK}/dit-${QUANT}.gguf")
+fi
+
+hf download "${REPO_ID}" "${INCLUDE_ARGS[@]}" --local-dir "${OUT_ROOT}"
+
+# Soft legacy fallback only when a specific tagged DiT is missing.
+if [[ "${QUANT}" != "all" && ! -f "${DEST}/dit-${QUANT}.gguf" ]]; then
+  echo "note: dit-${QUANT}.gguf missing; trying legacy dit.gguf" >&2
+  hf download "${REPO_ID}" --include "${PACK}/dit.gguf" --local-dir "${OUT_ROOT}"
 fi
 
 echo "Done. Generate with:"
 if [[ "${QUANT}" == "all" ]]; then
-  echo "  ./build-metal/uniflow-audio --model ${VARIANT} --quant Q8_0 --caption \"...\" --duration 5"
+  echo "  ./build-metal/uniflow-audio --model ${VARIANT} --quant F16 --caption \"...\" --duration 5"
 else
   echo "  ./build-metal/uniflow-audio --model ${VARIANT} --quant ${QUANT} --caption \"...\" --duration 5"
 fi

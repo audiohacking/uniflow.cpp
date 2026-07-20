@@ -63,28 +63,18 @@ test-smoke: cpu
 test-smoke-metal: metal
 	$(BUILD_DIR_METAL)/uniflow-audio --smoke-test
 
-# Convert only T5 for now (safe). DiT/VAE converters are intentionally absent
-# until tensor maps are verified against UniFlow HF weights — see DEVELOPMENT.md.
-# Convert UniFlow-Audio-v1.1-Small (T2A subset). Requires models/uniflow-small/.
-.PHONY: convert-small
+# Convert UniFlow packs → dist/hf/uniflow-audio-v1.1-{variant}/
+# QUANT=F16|Q8_0|Q4_0|all (default F16)
+.PHONY: convert-small convert-base convert-large convert-xlarge convert-t5
 convert-small:
-	@test -f models/uniflow-small/model.safetensors || \
-		(echo "Missing models/uniflow-small — see DEVELOPMENT.md"; exit 1)
-	@mkdir -p models
-	@echo "=== DiT (F16) ==="
-	python3 convert/convert_dit.py models/uniflow-small -o models/dit.gguf --dtype f16 --variant small
-	@echo "=== VAE (F16, weight_norm fused) ==="
-	python3 convert/convert_vae.py models/uniflow-small -o models/vae.gguf --dtype f16
-	@echo "=== Instructions ==="
-	python3 convert/convert_instructions.py models/uniflow-small -o models/instructions.gguf
-	@echo "=== T5 (optional if missing) ==="
-	@if [ ! -f models/t5_encoder.gguf ]; then \
-		python3 convert/convert_t5_encoder.py google/flan-t5-large -o models/t5_encoder.gguf --dtype f32; \
-		cp ~/.cache/huggingface/hub/models--google--flan-t5-large/snapshots/*/spiece.model models/ 2>/dev/null || true; \
-	fi
-	@ls -lh models/*.gguf models/spiece.model 2>/dev/null || ls -lh models/*.gguf
+	./scripts/convert_variant.sh small $(or $(QUANT),F16)
+convert-base:
+	./scripts/convert_variant.sh base $(or $(QUANT),F16)
+convert-large:
+	./scripts/convert_variant.sh large $(or $(QUANT),F16)
+convert-xlarge:
+	./scripts/convert_variant.sh xlarge $(or $(QUANT),F16)
 
-.PHONY: convert-t5
 convert-t5:
 	@mkdir -p models
 	@echo "Converting Flan-T5-large encoder → models/t5_encoder.gguf"
@@ -98,26 +88,17 @@ help:
 	@echo "  make metal|cpu|cuda   Build inference binary"
 	@echo "  make test             Run C++ + Python regression tests"
 	@echo "  make test-smoke       CLI smoke test (CPU)"
-	@echo "  make convert-t5       Convert Flan-T5 encoder only"
-	@echo "  make convert-small|base|large   Convert variant pack → dist/hf/"
-	@echo "  make download-gguf    Fetch Small GGUF pack from HF (default)"
+	@echo "  make convert-small|base|large   Pack → dist/hf/ (QUANT=F16|Q8_0|Q4_0|all)"
+	@echo "  make download-gguf            Small F16 (QUANT=… to override)"
 	@echo "  make download-gguf-small|base|large"
-	@echo "  make clean            Remove build dirs"
-
-# Variant converts → dist/hf/uniflow-audio-v1.1-{variant}/
-.PHONY: convert-base convert-large convert-xlarge
-convert-base:
-	./scripts/convert_variant.sh base
-convert-large:
-	./scripts/convert_variant.sh large
-convert-xlarge:
-	./scripts/convert_variant.sh xlarge
+	@echo "  make clean                    Remove build dirs"
 
 .PHONY: download-gguf download-gguf-small download-gguf-base download-gguf-large
+# QUANT=F16|Q8_0|Q4_0|all — defaults: small/base F16, large Q8_0
 download-gguf: download-gguf-small
 download-gguf-small:
-	./scripts/download_gguf.sh small F16
+	./scripts/download_gguf.sh small $(or $(QUANT),F16)
 download-gguf-base:
-	./scripts/download_gguf.sh base F16
+	./scripts/download_gguf.sh base $(or $(QUANT),F16)
 download-gguf-large:
-	./scripts/download_gguf.sh large Q8_0
+	./scripts/download_gguf.sh large $(or $(QUANT),Q8_0)

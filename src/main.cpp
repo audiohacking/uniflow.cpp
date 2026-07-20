@@ -63,7 +63,7 @@ void print_usage(const char *argv0) {
         "  %s --models-dir models --batch prompts.txt --output-dir out/\n"
         "\n"
         "Download GGUF packs (HF):\n"
-        "  ./scripts/download_gguf.sh [small|base|large] [F16|Q8_0|Q4_0]\n",
+        "  ./scripts/download_gguf.sh [small|base|large] [F16|Q8_0|Q4_0|all]\n",
         argv0, argv0, argv0, argv0, argv0, argv0, argv0);
 }
 

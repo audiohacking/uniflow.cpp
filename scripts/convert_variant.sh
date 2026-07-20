@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Convert one UniFlow HF checkpoint dir → staged GGUF pack under dist/hf/
-# Reuses shared T5/VAE/instructions/spiece when present in models/.
+# Convert UniFlow HF checkpoint → staged GGUF pack under dist/hf/
+# Usage: ./scripts/convert_variant.sh <small|base|large|xlarge> [F16|Q8_0|Q4_0|all]
+# Default quant: F16. "all" writes dit-F16.gguf + dit-Q8_0.gguf + dit-Q4_0.gguf.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VARIANT="${1:?usage: $0 <small|base|large|xlarge>}"
+VARIANT="${1:?usage: $0 <small|base|large|xlarge> [F16|Q8_0|Q4_0|all]}"
+QUANT_RAW="${2:-F16}"
 SRC="${ROOT}/models/uniflow-${VARIANT}"
 PACK="uniflow-audio-v1.1-${VARIANT}"
 DEST="${ROOT}/dist/hf/${PACK}"
@@ -14,8 +16,24 @@ case "${VARIANT}" in
   base) HF_ID="wsntxxn/UniFlow-Audio-v1.1-Base" ;;
   large) HF_ID="wsntxxn/UniFlow-Audio-v1.1-Large" ;;
   xlarge) HF_ID="wsntxxn/UniFlow-Audio-v1.1-XLarge" ;;
-  *) echo "usage: $0 <small|base|large|xlarge>" >&2; exit 1 ;;
+  *) echo "usage: $0 <small|base|large|xlarge> [F16|Q8_0|Q4_0|all]" >&2; exit 1 ;;
 esac
+
+normalize_quant() {
+  case "$(echo "$1" | tr '[:lower:]' '[:upper:]')" in
+    F16|FP16) echo F16 ;;
+    Q8|Q8_0) echo Q8_0 ;;
+    Q4|Q4_0) echo Q4_0 ;;
+    ALL) echo all ;;
+    *) return 1 ;;
+  esac
+}
+
+QUANT="$(normalize_quant "${QUANT_RAW}" || true)"
+if [[ -z "${QUANT}" ]]; then
+  echo "error: unknown quant '${QUANT_RAW}' (use F16|Q8_0|Q4_0|all)" >&2
+  exit 1
+fi
 
 if [[ ! -f "${SRC}/model.safetensors" ]]; then
   echo "Missing ${SRC}/model.safetensors" >&2
@@ -25,8 +43,30 @@ fi
 
 mkdir -p "${DEST}"
 
-echo "=== DiT (${VARIANT}, F16) → ${DEST}/dit-F16.gguf ==="
-python3 "${ROOT}/convert/convert_dit.py" "${SRC}" -o "${DEST}/dit-F16.gguf" --dtype f16 --variant "${VARIANT}"
+dtype_for_tag() {
+  case "$1" in
+    F16) echo f16 ;;
+    Q8_0) echo q8_0 ;;
+    Q4_0) echo q4_0 ;;
+  esac
+}
+
+convert_dit() {
+  local tag="$1"
+  local dtype
+  dtype="$(dtype_for_tag "${tag}")"
+  echo "=== DiT (${VARIANT}, ${tag}) → ${DEST}/dit-${tag}.gguf ==="
+  python3 "${ROOT}/convert/convert_dit.py" "${SRC}" \
+    -o "${DEST}/dit-${tag}.gguf" --dtype "${dtype}" --variant "${VARIANT}"
+}
+
+if [[ "${QUANT}" == "all" ]]; then
+  for tag in F16 Q8_0 Q4_0; do
+    convert_dit "${tag}"
+  done
+else
+  convert_dit "${QUANT}"
+fi
 
 if [[ ! -f "${DEST}/vae.gguf" ]]; then
   if [[ -f "${ROOT}/models/vae.gguf" ]]; then
