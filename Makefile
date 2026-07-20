@@ -4,6 +4,7 @@
 BUILD_DIR_CPU   := build-cpu
 BUILD_DIR_METAL := build-metal
 BUILD_DIR_CUDA  := build-cuda
+BUILD_DIR_WEB   := build-web
 
 CMAKE_FLAGS := -DCMAKE_BUILD_TYPE=Release
 
@@ -39,7 +40,22 @@ cuda:
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR_CPU) $(BUILD_DIR_METAL) $(BUILD_DIR_CUDA)
+	rm -rf $(BUILD_DIR_CPU) $(BUILD_DIR_METAL) $(BUILD_DIR_CUDA) $(BUILD_DIR_WEB)
+
+.PHONY: web
+web:
+	@command -v emcmake >/dev/null || (echo "emcmake not found — install emscripten"; exit 1)
+	@mkdir -p $(BUILD_DIR_WEB)
+	emcmake cmake -B $(BUILD_DIR_WEB) -S . $(CMAKE_FLAGS) \
+		-DUNIFLOW_METAL=OFF \
+		-DUNIFLOW_CUDA=OFF \
+		-DUNIFLOW_BUILD_TESTS=OFF \
+		-DGGML_WEBGPU=ON \
+		-DGGML_WEBGPU_JSPI=ON \
+		-DGGML_OPENMP=OFF
+	emmake cmake --build $(BUILD_DIR_WEB) --target uniflow-web --parallel
+	@echo "Web build complete: web/uniflow-web.{js,wasm}"
+	@echo "Serve: npx --yes serve web -p 8080"
 
 .PHONY: rebuild
 rebuild: clean all
@@ -89,6 +105,7 @@ help:
 	@echo "  make test             Run C++ + Python regression tests"
 	@echo "  make test-smoke       CLI smoke test (CPU)"
 	@echo "  make convert-small|base|large   Pack → dist/hf/ (QUANT=F16|Q8_0|Q4_0|all)"
+	@echo "  make web              Emscripten WebGPU demo → web/"
 	@echo "  make download-gguf            Base Q8_0 (QUANT=… to override)"
 	@echo "  make download-gguf-small|base|large"
 	@echo "  make clean                    Remove build dirs"

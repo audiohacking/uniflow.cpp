@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,7 @@ struct PipelineConfig {
     std::string dit_gguf_path;
     std::string vae_gguf_path;
     std::string instructions_gguf_path;
-    std::string spiece_model_path;
+    std::string spiece_model_path;  // empty → caption tokenize unavailable; use token ids
     std::string task = "text_to_audio";  // or text_to_music
     int instruction_idx = 0;
     int num_steps = 25;
@@ -26,11 +27,17 @@ public:
     explicit Pipeline(const PipelineConfig &config);
     ~Pipeline();
 
-    // Generates 24 kHz mono PCM for the caption.
+    // Tokenize caption (requires spiece_model_path) then generate 24 kHz mono PCM.
     std::vector<float> generate(const std::string &caption);
 
-    // Override RNG seed for the next generate() (0 = random). Used by batch CLI.
+    // Browser / external tokenizer path — skip SentencePiece.
+    std::vector<float> generate_from_tokens(const std::vector<int32_t> &token_ids);
+
     void set_seed(unsigned int seed);
+
+    // Update sampling knobs without reloading weights (web demo).
+    void set_generation_params(int num_steps, float guidance_scale, float sway,
+                               float duration_seconds);
 
 private:
     struct Impl;

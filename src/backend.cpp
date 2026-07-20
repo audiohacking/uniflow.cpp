@@ -34,15 +34,19 @@ BackendPair backend_init(const char* name) {
     BackendPair bp = {nullptr, nullptr, nullptr, false};
 
     // Check for explicit backend selection via environment.
-    // GGML_BACKEND accepts: Metal|GPU|CUDA|CPU, or a ggml device name (e.g. MTL0).
+    // GGML_BACKEND accepts: Metal|GPU|CUDA|WebGPU|CPU, or a ggml device name (e.g. MTL0).
     const char* env_backend = std::getenv("GGML_BACKEND");
     if (env_backend) {
         if (strcasecmp(env_backend, "CPU") == 0) {
             bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
         } else if (strcasecmp(env_backend, "Metal") == 0 ||
                    strcasecmp(env_backend, "GPU") == 0 ||
-                   strcasecmp(env_backend, "CUDA") == 0) {
+                   strcasecmp(env_backend, "CUDA") == 0 ||
+                   strcasecmp(env_backend, "WebGPU") == 0) {
             bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr);
+            if (!bp.backend && strcasecmp(env_backend, "WebGPU") == 0) {
+                bp.backend = ggml_backend_init_by_name("WebGPU", nullptr);
+            }
         } else {
             bp.backend = ggml_backend_init_by_name(env_backend, nullptr);
         }
@@ -51,6 +55,16 @@ BackendPair backend_init(const char* name) {
                          env_backend);
         }
     }
+
+#ifdef __EMSCRIPTEN__
+    // Prefer WebGPU in the browser when no explicit override.
+    if (!bp.backend) {
+        bp.backend = ggml_backend_init_by_name("WebGPU", nullptr);
+        if (!bp.backend) {
+            bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr);
+        }
+    }
+#endif
 
     // Best available (Metal on macOS, CUDA on Linux, else CPU)
     if (!bp.backend) {
