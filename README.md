@@ -50,9 +50,9 @@ Files land in `models/uniflow-audio-v1.1-<size>/`.
 
 | Size  | DiT quants on HF | Notes |
 |-------|------------------|-------|
-| small | F16 | Default; good starting point |
-| base  | F16 | Higher capacity |
-| large | F16 (~2.5G), Q8_0 (~1.4G), Q4_0 (~0.8G) | Q8_0 recommended |
+| small | F16 / Q8_0 / Q4_0 | Default size; F16 default quant |
+| base  | F16 / Q8_0 / Q4_0 | Higher capacity |
+| large | F16 / Q8_0 / Q4_0 | Q8_0 recommended for Large |
 
 Each pack also includes shared T5, VAE, instructions, and tokenizer (~1.4 GB).
 
