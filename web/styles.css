@@ -88,6 +88,31 @@ button#btn-load {
   border: 1px solid var(--border);
 }
 
+.progress-wrap {
+  margin: 0 0 1rem;
+}
+
+.progress-track {
+  height: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.12s linear;
+}
+
+.progress-label {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 #log {
   background: var(--card);
   border: 1px solid var(--border);

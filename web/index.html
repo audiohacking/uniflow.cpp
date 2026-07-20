@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>uniflow.cpp — WebGPU demo (Small Q8)</title>
+  <title>uniflow.cpp — WebGPU demo (Small Q4)</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main>
     <h1>uniflow.cpp <span>WebGPU</span></h1>
     <p class="lede">
-      Experimental in-browser T2A — Small DiT Q8_0 + T5 Q4_0 via ggml WebGPU.
-      Weights stream from Hugging Face; this page is static (GitHub Pages–ready).
+      Experimental in-browser T2A — Small DiT <strong>Q4_0</strong> + T5 Q4_0 via ggml WebGPU
+      (lo-fi / faster download). Weights stream from Hugging Face.
     </p>
 
     <label>Caption
@@ -33,6 +33,13 @@
     <div class="actions">
       <button id="btn-load" type="button">Load models</button>
       <button id="btn-gen" type="button" disabled>Generate</button>
+    </div>
+
+    <div id="progress-wrap" class="progress-wrap" hidden>
+      <div class="progress-track" aria-hidden="true">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <div id="progress-label" class="progress-label"></div>
     </div>
 
     <pre id="log" aria-live="polite"></pre>

@@ -80,7 +80,13 @@ int generateFromTokens(const emscripten::val &token_ids_js, float duration_sec, 
         }
         std::vector<int32_t> ids(len);
         for (unsigned i = 0; i < len; ++i) {
-            ids[i] = token_ids_js[i].as<int32_t>();
+            // transformers.js may put BigInt in the array; embind as<int32_t> rejects it.
+            emscripten::val item = token_ids_js[i];
+            if (item.typeOf().as<std::string>() == "bigint") {
+                ids[i] = static_cast<int32_t>(item.as<long long>());
+            } else {
+                ids[i] = item.as<int32_t>();
+            }
         }
         g_pipeline->set_generation_params(steps, cfg, sway, duration_sec);
         g_pipeline->set_seed(seed == 0 ? 42u : seed);
@@ -95,7 +101,10 @@ int generateFromTokens(const emscripten::val &token_ids_js, float duration_sec, 
 
 std::string lastError() { return g_last_error; }
 
-uintptr_t pcmPointer() { return reinterpret_cast<uintptr_t>(g_pcm.data()); }
+// Return as int so embind never hands JS a BigInt (uintptr_t → BigInt on some builds).
+int pcmPointer() {
+    return static_cast<int>(reinterpret_cast<uintptr_t>(g_pcm.data()));
+}
 
 int pcmSampleRate() { return 24000; }
 

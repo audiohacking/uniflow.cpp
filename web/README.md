@@ -1,7 +1,7 @@
 # Browser WebGPU demo (Small Q8)
 
-Experimental static site for running UniFlow-Audio **Small** (`dit-Q8_0` + pack T5 Q4_0)
-in Chrome/Edge via **ggml WebGPU** (Emscripten).
+Experimental static site for running UniFlow-Audio **Small** (`dit-Q4_0` + pack T5 Q4_0)
+in Chrome/Edge via **ggml WebGPU** (Emscripten). Q4 keeps the download smaller for demos.
 
 Weights are **not** stored in git. The page fetches them from
 [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf).
