@@ -2,7 +2,7 @@ name: Deploy WebGPU demo to GitHub Pages
 
 on:
   push:
-    branches: [experiment/webgpu-small-q8]
+    branches: [main]
     paths:
       - "web/**"
       - ".github/workflows/pages-webgpu.yml"
