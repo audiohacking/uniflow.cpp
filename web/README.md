@@ -8,6 +8,11 @@ Weights are **not** stored in git. The page fetches them from
 
 ## Build
 
+Needs **Emscripten ≥ 4.0.10** (CI uses 4.0.23). Current ggml-webgpu needs a newer
+Dawn `emdawnwebgpu` package than Emscripten 4.0.10–4.0.12 ship by default —
+`make web` / the Pages workflow fetch a pinned package via
+`scripts/fetch_emdawnwebgpu.sh`.
+
 ```bash
 # Homebrew emscripten, or source emsdk_env.sh
 export PATH="/opt/homebrew/opt/emscripten/bin:$PATH"
@@ -15,18 +20,8 @@ export PATH="/opt/homebrew/opt/emscripten/bin:$PATH"
 cd /path/to/uniflow.cpp
 git submodule update --init --recursive
 
-rm -rf build-web
-emcmake cmake -B build-web -S . \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DUNIFLOW_METAL=OFF \
-  -DUNIFLOW_CUDA=OFF \
-  -DUNIFLOW_BUILD_TESTS=OFF \
-  -DGGML_WEBGPU=ON \
-  -DGGML_WEBGPU_JSPI=ON \
-  -DGGML_OPENMP=OFF
-
-emmake cmake --build build-web --target uniflow-web --parallel
-# outputs: web/uniflow-web.js + web/uniflow-web.wasm
+make web
+# outputs: web/uniflow-web.{js,wasm}
 ```
 
 ## Local serve

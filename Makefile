@@ -45,6 +45,7 @@ clean:
 .PHONY: web
 web:
 	@command -v emcmake >/dev/null || (echo "emcmake not found — install emscripten"; exit 1)
+	@./scripts/fetch_emdawnwebgpu.sh
 	@mkdir -p $(BUILD_DIR_WEB)
 	emcmake cmake -B $(BUILD_DIR_WEB) -S . $(CMAKE_FLAGS) \
 		-DUNIFLOW_METAL=OFF \
@@ -52,7 +53,8 @@ web:
 		-DUNIFLOW_BUILD_TESTS=OFF \
 		-DGGML_WEBGPU=ON \
 		-DGGML_WEBGPU_JSPI=ON \
-		-DGGML_OPENMP=OFF
+		-DGGML_OPENMP=OFF \
+		-DEMDAWNWEBGPU_DIR="$(CURDIR)/third_party/emdawnwebgpu_pkg"
 	emmake cmake --build $(BUILD_DIR_WEB) --target uniflow-web --parallel
 	@echo "Web build complete: web/uniflow-web.{js,wasm}"
 	@echo "Serve: npx --yes serve web -p 8080"

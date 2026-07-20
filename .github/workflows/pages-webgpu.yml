@@ -40,15 +40,21 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      # ≥4.0.13 ships a Dawn pin with InstanceFeatureName; we still fetch an
+      # explicit emdawnwebgpu_pkg so ggml-webgpu does not depend on the
+      # toolchain's built-in (too-old) port alone.
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 4.0.10
+          version: 4.0.23
 
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y ninja-build unzip
+
+      - name: Fetch emdawnwebgpu (Dawn headers matching ggml-webgpu)
+        run: ./scripts/fetch_emdawnwebgpu.sh
 
       - name: Configure (Emscripten + WebGPU)
         run: |
@@ -59,7 +65,8 @@ jobs:
             -DUNIFLOW_BUILD_TESTS=OFF \
             -DGGML_WEBGPU=ON \
             -DGGML_WEBGPU_JSPI=ON \
-            -DGGML_OPENMP=OFF
+            -DGGML_OPENMP=OFF \
+            -DEMDAWNWEBGPU_DIR="${{ github.workspace }}/third_party/emdawnwebgpu_pkg"
 
       - name: Build uniflow-web
         run: cmake --build build-web --target uniflow-web --parallel

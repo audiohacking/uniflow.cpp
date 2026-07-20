@@ -55,3 +55,6 @@ a.out.js
 a.out.wasm
 build-web/
 
+# Dawn emdawnwebgpu package (fetched by scripts/fetch_emdawnwebgpu.sh)
+third_party/emdawnwebgpu_pkg/
+
