@@ -1,8 +1,10 @@
 # uniflow.cpp
 
-C++17 [GGML](https://github.com/ggerganov/ggml)/GGUF inference for [UniFlow-Audio](https://github.com/wsntxxn/UniFlow-Audio) — text-to-audio and text-to-music via flow matching.
+C++17 [GGML](https://github.com/ggerganov/ggml)/GGUF inference for
+[UniFlow-Audio](https://github.com/wsntxxn/UniFlow-Audio) — text-to-audio and
+text-to-music via flow matching. No Python at runtime.
 
-> Converted/Quantized GGUF models: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
+GGUF packs: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
 
 ## Build
 
@@ -28,74 +30,62 @@ Requires CMake, a C++17 compiler, and (for Metal) Xcode Command Line Tools.
 Packs live under `uniflow-audio-v1.1-{small,base,large}/`.
 
 - **Size** = DiT capacity (`small` / `base` / `large`)
-- **Quant** = DiT encoding in the filename (`dit-F16.gguf` / `dit-Q8_0.gguf` / `dit-Q4_0.gguf`)
+- **DiT quant** = `dit-F16.gguf` / `dit-Q8_0.gguf` / `dit-Q4_0.gguf`
+- **T5** = per pack (not shared): **small → Q4_0**, **base/large → Q8_0**
+  (F16 T5 is unsupported)
 
-Every size publishes all three quants. Shared T5 / VAE / instructions / tokenizer
-(~1.4 GB) are included once per pack.
-
-**Default: Small + F16.**
+**Default: Base + DiT Q8_0** (with T5 Q8_0 in that pack).
 
 ```bash
 # requires: pip install -U "huggingface_hub[cli]"
-./scripts/download_gguf.sh                    # small F16
+./scripts/download_gguf.sh                 # base Q8_0
+./scripts/download_gguf.sh small F16
 ./scripts/download_gguf.sh small Q8_0
-./scripts/download_gguf.sh small Q4_0
 ./scripts/download_gguf.sh base F16
-./scripts/download_gguf.sh base Q8_0
-./scripts/download_gguf.sh base Q4_0
-./scripts/download_gguf.sh large F16
-./scripts/download_gguf.sh large Q8_0         # recommended for Large
 ./scripts/download_gguf.sh large Q4_0
-./scripts/download_gguf.sh large all          # every DiT quant for that size
+./scripts/download_gguf.sh base all        # every DiT quant for base
 
-# Make helpers (override with QUANT=...)
-make download-gguf              # small F16
-make download-gguf-base         # base F16
-make download-gguf-large        # large Q8_0
-QUANT=Q4_0 make download-gguf-base
-QUANT=all make download-gguf-large
+make download-gguf                         # base Q8_0
+QUANT=F16 make download-gguf-small
 ```
 
 Files land in `models/uniflow-audio-v1.1-<size>/`.
 
-| Size  | `dit-F16` | `dit-Q8_0` | `dit-Q4_0` |
-|-------|-----------|------------|------------|
-| small | ~350 MB   | ~247 MB    | ~170 MB    |
-| base  | ~1.4 GB   | ~834 MB    | ~482 MB    |
-| large | ~2.5 GB   | ~1.4 GB    | ~799 MB    |
+| Size  | T5 in pack | `dit-F16` | `dit-Q8_0` | `dit-Q4_0` |
+|-------|------------|-----------|------------|------------|
+| small | Q4_0 (~183 MB) | ~350 MB | ~247 MB | ~170 MB |
+| base  | Q8_0 (~346 MB) | ~1.4 GB | ~834 MB | ~482 MB |
+| large | Q8_0 (~346 MB) | ~2.5 GB | ~1.4 GB | ~799 MB |
+
+Each pack also includes VAE + instructions + tokenizer (~93 MB).
 
 ## Generate
 
 ```bash
-# Text-to-audio (default: auto-picks dit-F16.gguf if present)
-./build-metal/uniflow-audio --model small \
+# Default experience (after download_gguf.sh): base + Q8 DiT
+./build-metal/uniflow-audio --model base --quant Q8_0 \
   --caption "a man is speaking while a dog barks" \
   --output output/out.wav \
   --duration 5 --steps 25 --cfg 5.0 --sway -1 --seed 42
 
-# Explicit size + quant
-./build-metal/uniflow-audio --model base --quant Q8_0 \
+./build-metal/uniflow-audio --model small --quant F16 \
   --caption "a man is speaking while a dog barks" \
-  --output output/base_q8.wav --duration 5
+  --output output/small.wav --duration 5
 
 ./build-metal/uniflow-audio --model large --quant Q4_0 \
   --caption "a man is speaking while a dog barks" \
   --output output/large_q4.wav --duration 5
 
 # Text-to-music
-./build-metal/uniflow-audio --model small --quant F16 \
+./build-metal/uniflow-audio --model base --quant Q8_0 \
   --task t2m \
   --caption "lo-fi hip hop beat" \
   --output output/music.wav \
   --duration 10
-
-# Batch: one caption per line
-./build-metal/uniflow-audio --model small --quant F16 \
-  --batch prompts.txt --output-dir output/
 ```
 
 `--model small|base|large` → `models/uniflow-audio-v1.1-<size>/`  
-`--quant F16|Q8_0|Q4_0` → `dit-<QUANT>.gguf` (if omitted: F16 → Q8_0 → Q4_0)  
+`--quant F16|Q8_0|Q4_0` → `dit-<QUANT>.gguf` (if omitted: Q8_0 → F16 → Q4_0)  
 `--models-dir DIR` if weights live elsewhere.
 
 ### Useful options
@@ -104,7 +94,7 @@ Files land in `models/uniflow-audio-v1.1-<size>/`.
 |------|---------|-------------|
 | `--caption` | — | Prompt text (T2A / T2M) |
 | `--task` | `t2a` | `t2a` or `t2m` |
-| `--quant` | auto | DiT file: `F16`, `Q8_0`, or `Q4_0` |
+| `--quant` | auto | DiT: `F16`, `Q8_0`, or `Q4_0` |
 | `--duration` | model-predicted | Length in seconds |
 | `--steps` | `25` | Flow-matching steps |
 | `--cfg` | `5.0` | Classifier-free guidance |

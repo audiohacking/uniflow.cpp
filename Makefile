@@ -89,16 +89,16 @@ help:
 	@echo "  make test             Run C++ + Python regression tests"
 	@echo "  make test-smoke       CLI smoke test (CPU)"
 	@echo "  make convert-small|base|large   Pack → dist/hf/ (QUANT=F16|Q8_0|Q4_0|all)"
-	@echo "  make download-gguf            Small F16 (QUANT=… to override)"
+	@echo "  make download-gguf            Base Q8_0 (QUANT=… to override)"
 	@echo "  make download-gguf-small|base|large"
 	@echo "  make clean                    Remove build dirs"
 
 .PHONY: download-gguf download-gguf-small download-gguf-base download-gguf-large
-# QUANT=F16|Q8_0|Q4_0|all — defaults: small/base F16, large Q8_0
-download-gguf: download-gguf-small
+# QUANT=F16|Q8_0|Q4_0|all — default download is base Q8_0
+download-gguf: download-gguf-base
 download-gguf-small:
-	./scripts/download_gguf.sh small $(or $(QUANT),F16)
+	./scripts/download_gguf.sh small $(or $(QUANT),Q8_0)
 download-gguf-base:
-	./scripts/download_gguf.sh base $(or $(QUANT),F16)
+	./scripts/download_gguf.sh base $(or $(QUANT),Q8_0)
 download-gguf-large:
 	./scripts/download_gguf.sh large $(or $(QUANT),Q8_0)

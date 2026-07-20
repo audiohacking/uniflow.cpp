@@ -31,8 +31,8 @@ void print_usage(const char *argv0) {
         "  positional: <t5> <dit> <vae> <instructions> <spiece>\n"
         "  --models-dir DIR   Expects DIR/{t5_encoder,vae,instructions}.gguf + DIR/spiece.model\n"
         "                     + DIR/dit-<QUANT>.gguf (or legacy DIR/dit.gguf)\n"
-        "  --model NAME       Shortcut → models/uniflow-audio-v1.1-NAME/ (after download_gguf.sh)\n"
-        "  --quant QUANT      DiT quant: F16|Q8_0|Q4_0 (default: auto)\n"
+        "  --model NAME       Shortcut → models/uniflow-audio-v1.1-NAME/ (default: base)\n"
+        "  --quant QUANT      DiT quant: F16|Q8_0|Q4_0 (default: Q8_0 if present)\n"
         "\n"
         "Prompt options (use ONE of):\n"
         "  --caption TEXT     Text caption for T2A/T2M (plain text; no Dasheng tags)\n"
@@ -58,12 +58,14 @@ void print_usage(const char *argv0) {
         "  GGML_BACKEND=Metal|GPU|CPU|MTL0   Force ggml backend (Metal default on Apple)\n"
         "\n"
         "Examples:\n"
-        "  %s --model small --caption \"a dog barking\" --duration 5 --seed 42\n"
-        "  %s --model large --quant Q8_0 --caption \"lo-fi hip hop beat\" --task t2m\n"
+        "  %s --model base --quant Q8_0 --caption \"a dog barking\" --duration 5 --seed 42\n"
+        "  %s --model small --quant F16 --caption \"lo-fi hip hop beat\" --task t2m\n"
         "  %s --models-dir models --batch prompts.txt --output-dir out/\n"
         "\n"
         "Download GGUF packs (HF):\n"
-        "  ./scripts/download_gguf.sh [small|base|large] [F16|Q8_0|Q4_0|all]\n",
+        "  ./scripts/download_gguf.sh              # base Q8_0 (default)\n"
+        "  ./scripts/download_gguf.sh small F16\n"
+        "  ./scripts/download_gguf.sh large Q4_0\n",
         argv0, argv0, argv0, argv0, argv0, argv0, argv0);
 }
 
@@ -117,7 +119,7 @@ std::string resolve_dit_path(const std::string &models_dir, const std::string &q
         if (file_readable(tagged)) return tagged;
         throw std::runtime_error("missing DiT file: " + tagged);
     }
-    static const char *kPrefer[] = {"F16", "Q8_0", "Q4_0"};
+    static const char *kPrefer[] = {"Q8_0", "F16", "Q4_0"};
     for (const char *q : kPrefer) {
         const std::string tagged = models_dir + "/dit-" + q + ".gguf";
         if (file_readable(tagged)) return tagged;
@@ -302,15 +304,37 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "Error: %s\n", e.what());
             if (!model_variant.empty()) {
                 std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s %s\n",
-                             model_variant.c_str(), quant.empty() ? "F16" : quant.c_str());
+                             model_variant.c_str(), quant.empty() ? "Q8_0" : quant.c_str());
             }
             return 1;
         }
         have_models = true;
     }
 
+    if (!have_models) {
+        // Default: base + prefer dit-Q8_0 (pack ships T5 Q8_0).
+        try {
+            apply_model_variant("base");
+        } catch (...) {
+        }
+        while (!models_dir.empty() && (models_dir.back() == '/' || models_dir.back() == '\\')) {
+            models_dir.pop_back();
+        }
+        cfg.t5_gguf_path = models_dir + "/t5_encoder.gguf";
+        cfg.vae_gguf_path = models_dir + "/vae.gguf";
+        cfg.instructions_gguf_path = models_dir + "/instructions.gguf";
+        cfg.spiece_model_path = models_dir + "/spiece.model";
+        try {
+            cfg.dit_gguf_path = resolve_dit_path(models_dir, quant);
+            have_models = true;
+        } catch (const std::exception &) {
+            have_models = false;
+        }
+    }
+
     if (!have_models || cfg.t5_gguf_path.empty()) {
-        std::fprintf(stderr, "Error: provide --model / --models-dir / positional model paths\n\n");
+        std::fprintf(stderr, "Error: provide --model / --models-dir / positional model paths\n");
+        std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh   # base Q8_0 default\n\n");
         print_usage(argv[0]);
         return 1;
     }
@@ -322,7 +346,7 @@ int main(int argc, char **argv) {
             std::fprintf(stderr, "Error: cannot read model file: %s\n", p.c_str());
             if (!model_variant.empty()) {
                 std::fprintf(stderr, "  Hint: ./scripts/download_gguf.sh %s %s\n",
-                             model_variant.c_str(), quant.empty() ? "F16" : quant.c_str());
+                             model_variant.c_str(), quant.empty() ? "Q8_0" : quant.c_str());
             }
             return 1;
         }

@@ -88,15 +88,18 @@ if [[ ! -f "${DEST}/instructions.gguf" ]]; then
   fi
 fi
 
-if [[ ! -f "${DEST}/t5_encoder.gguf" ]]; then
-  if [[ -f "${ROOT}/models/t5_encoder.gguf" ]]; then
-    echo "=== T5: copy shared ==="
-    cp "${ROOT}/models/t5_encoder.gguf" "${DEST}/t5_encoder.gguf"
-  else
-    echo "=== T5 encoder ==="
-    python3 "${ROOT}/convert/convert_t5_encoder.py" google/flan-t5-large -o "${DEST}/t5_encoder.gguf" --dtype f32
-  fi
-fi
+# Per-pack T5 quant (never F16 — CPU F16 T5 is broken):
+#   small → Q4_0, base/large → Q8_0
+t5_dtype_for_variant() {
+  case "$1" in
+    small) echo q4_0 ;;
+    *) echo q8_0 ;;
+  esac
+}
+T5_DTYPE="$(t5_dtype_for_variant "${VARIANT}")"
+echo "=== T5 encoder (${T5_DTYPE}) → ${DEST}/t5_encoder.gguf ==="
+python3 "${ROOT}/convert/convert_t5_encoder.py" google/flan-t5-large \
+  -o "${DEST}/t5_encoder.gguf" --dtype "${T5_DTYPE}"
 
 if [[ ! -f "${DEST}/spiece.model" ]]; then
   if [[ -f "${ROOT}/models/spiece.model" ]]; then
