@@ -53,6 +53,6 @@ Users need a WebGPU browser and enough RAM for ~520 MB weights + WASM heap.
 | `initBackend()` | Init WebGPU + CPU sched |
 | `loadModels(t5, dit, vae, instructions)` | MEMFS paths |
 | `generateFromTokens(ids, duration, steps, cfg, sway, seed)` | PCM length |
-| `pcmPointer()` / `pcmSampleRate()` / `freePcm()` | Read float32 PCM |
+| `getPcm()` / `pcmSampleRate()` / `freePcm()` | Copied float32 PCM |
 
 Tokenization is done in JS (`@huggingface/transformers`).

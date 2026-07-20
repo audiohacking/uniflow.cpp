@@ -63,7 +63,7 @@ bool loadModels(const std::string &t5, const std::string &dit, const std::string
     }
 }
 
-// Returns PCM sample count @ 24 kHz. Pointer via pcmPointer(); call freePcm() when done.
+// Returns PCM sample count @ 24 kHz. Call getPcm() then freePcm() when done.
 int generateFromTokens(const emscripten::val &token_ids_js, float duration_sec, int steps,
                        float cfg, float sway, unsigned int seed) {
     g_last_error.clear();
@@ -101,9 +101,18 @@ int generateFromTokens(const emscripten::val &token_ids_js, float duration_sec, 
 
 std::string lastError() { return g_last_error; }
 
-// Return as int so embind never hands JS a BigInt (uintptr_t → BigInt on some builds).
-int pcmPointer() {
-    return static_cast<int>(reinterpret_cast<uintptr_t>(g_pcm.data()));
+// Copy PCM into a JS Float32Array (avoid raw heap pointers — addresses >2GB
+// become negative when passed through embind as int32).
+emscripten::val getPcm() {
+    if (g_pcm.empty()) {
+        return emscripten::val::null();
+    }
+    const size_t n = g_pcm.size();
+    emscripten::val out =
+        emscripten::val::global("Float32Array").new_(static_cast<unsigned>(n));
+    emscripten::val view = emscripten::val(emscripten::typed_memory_view(n, g_pcm.data()));
+    out.call<void>("set", view);
+    return out;
 }
 
 int pcmSampleRate() { return 24000; }
@@ -118,7 +127,7 @@ EMSCRIPTEN_BINDINGS(uniflow_web) {
     emscripten::function("loadModels", &loadModels);
     emscripten::function("generateFromTokens", &generateFromTokens);
     emscripten::function("lastError", &lastError);
-    emscripten::function("pcmPointer", &pcmPointer);
+    emscripten::function("getPcm", &getPcm);
     emscripten::function("pcmSampleRate", &pcmSampleRate);
     emscripten::function("freePcm", &freePcm);
 }

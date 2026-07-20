@@ -216,9 +216,12 @@ btnGen.onclick = async () => {
       throw new Error((await Promise.resolve(mod.lastError())) || "generate failed");
     }
 
-    const ptr = toNum(await Promise.resolve(mod.pcmPointer())) | 0;
+    const pcm = await Promise.resolve(mod.getPcm());
+    if (!pcm || pcm.length === 0) {
+      throw new Error((await Promise.resolve(mod.lastError())) || "empty PCM");
+    }
     const rate = toNum(await Promise.resolve(mod.pcmSampleRate())) | 0;
-    const samples = new Float32Array(mod.HEAPF32.buffer, ptr, n).slice();
+    const samples = pcm instanceof Float32Array ? pcm.slice() : Float32Array.from(pcm);
     await Promise.resolve(mod.freePcm());
 
     setProgress(90, "Encoding WAV…");
