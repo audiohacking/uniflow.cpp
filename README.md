@@ -55,6 +55,21 @@ Files land in `models/uniflow-audio-v1.1-<size>/`.
 
 Each pack also includes VAE + instructions + tokenizer (~93 MB).
 
+## Performance (Q8)
+
+Measured on **Apple M4** (Metal): DiT **Q8_0** + pack T5, **5 s** of audio,
+**25** steps, CFG **5.0**, sway **-1**. Generation time only (after weights loaded).
+
+| Model | Wall time | vs audio | DiT |
+|-------|-----------|----------|-----|
+| **small** Q8 | **~3.6 s** | **~1.4× realtime** | ~110 ms/step |
+| **base** Q8 | **~9 s** | ~0.55× realtime | ~330 ms/step |
+| **large** Q8 | **~14 s** | ~0.36× realtime | ~520 ms/step |
+
+Small Q8 is the sweet spot for snappy demos — a 5 s clip finishes in under 4 s.
+Base/Large trade a few more seconds for higher capacity. Numbers vary with
+steps, duration, and GPU; CUDA/CPU builds will differ.
+
 ## Generate
 
 ```bash
