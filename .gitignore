@@ -49,3 +49,9 @@ __pycache__/
 
 # Large reference dumps
 reference/dumps/
+
+# emcc accidental outputs
+a.out.js
+a.out.wasm
+build-web/
+
