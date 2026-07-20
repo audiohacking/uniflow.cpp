@@ -1,10 +1,8 @@
 # uniflow.cpp
 
-C++17 [GGML](https://github.com/ggerganov/ggml)/GGUF inference for
-[UniFlow-Audio](https://github.com/wsntxxn/UniFlow-Audio) — text-to-audio and
-text-to-music via flow matching. No Python at runtime.
+C++17 [GGML](https://github.com/ggerganov/ggml)/GGUF inference for [UniFlow-Audio](https://github.com/wsntxxn/UniFlow-Audio) — text-to-audio and text-to-music via flow matching.
 
-GGUF packs: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
+> Converted/Quantized GGUF models: [audiohacking/uniflow-audio-gguf](https://huggingface.co/audiohacking/uniflow-audio-gguf)
 
 ## Build
 
