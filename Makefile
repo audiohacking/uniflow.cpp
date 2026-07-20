@@ -52,7 +52,7 @@ web:
 		-DUNIFLOW_CUDA=OFF \
 		-DUNIFLOW_BUILD_TESTS=OFF \
 		-DGGML_WEBGPU=ON \
-		-DGGML_WEBGPU_JSPI=ON \
+		-DGGML_WEBGPU_JSPI=OFF \
 		-DGGML_OPENMP=OFF \
 		-DEMDAWNWEBGPU_DIR="$(CURDIR)/third_party/emdawnwebgpu_pkg"
 	emmake cmake --build $(BUILD_DIR_WEB) --target uniflow-web --parallel

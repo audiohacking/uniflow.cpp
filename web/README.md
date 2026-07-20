@@ -13,6 +13,9 @@ Dawn `emdawnwebgpu` package than Emscripten 4.0.10–4.0.12 ship by default —
 `make web` / the Pages workflow fetch a pinned package via
 `scripts/fetch_emdawnwebgpu.sh`.
 
+Built with **ASYNCIFY** (not JSPI) so WebGPU `WaitAny` works without
+`WebAssembly.promising` / Chrome experimental flags.
+
 ```bash
 # Homebrew emscripten, or source emsdk_env.sh
 export PATH="/opt/homebrew/opt/emscripten/bin:$PATH"

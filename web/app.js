@@ -85,7 +85,8 @@ btnLoad.onclick = async () => {
     }
     const mod = await wasmReady();
     log(`wasm ready`);
-    const backend = mod.initBackend();
+    // ASYNCIFY: WebGPU WaitAny may suspend → embind returns a Promise.
+    const backend = await Promise.resolve(mod.initBackend());
     log(`backend: ${backend}`);
     if (String(backend).startsWith("error:")) {
       throw new Error(backend);
@@ -96,13 +97,15 @@ btnLoad.onclick = async () => {
     await fetchToMemfs(mod, FILES.vae, "/models/vae.gguf");
     await fetchToMemfs(mod, FILES.instructions, "/models/instructions.gguf");
 
-    const ok = mod.loadModels(
-      "/models/t5_encoder.gguf",
-      "/models/dit-Q8_0.gguf",
-      "/models/vae.gguf",
-      "/models/instructions.gguf"
+    const ok = await Promise.resolve(
+      mod.loadModels(
+        "/models/t5_encoder.gguf",
+        "/models/dit-Q8_0.gguf",
+        "/models/vae.gguf",
+        "/models/instructions.gguf"
+      )
     );
-    if (!ok) throw new Error(mod.lastError() || "loadModels failed");
+    if (!ok) throw new Error((await Promise.resolve(mod.lastError())) || "loadModels failed");
     log("models loaded");
 
     tokenizer = await loadTokenizer();
@@ -139,13 +142,17 @@ btnGen.onclick = async () => {
     log(`tokens=${ids.length}`);
 
     log("generating (this can take a while)…");
-    const n = mod.generateFromTokens(ids, duration, steps, 5.0, -1.0, seed);
-    if (!n) throw new Error(mod.lastError() || "generate failed");
+    const n = await Promise.resolve(
+      mod.generateFromTokens(ids, duration, steps, 5.0, -1.0, seed)
+    );
+    if (!n) {
+      throw new Error((await Promise.resolve(mod.lastError())) || "generate failed");
+    }
 
-    const ptr = mod.pcmPointer();
-    const rate = mod.pcmSampleRate();
+    const ptr = await Promise.resolve(mod.pcmPointer());
+    const rate = await Promise.resolve(mod.pcmSampleRate());
     const samples = new Float32Array(mod.HEAPF32.buffer, ptr, n).slice();
-    mod.freePcm();
+    await Promise.resolve(mod.freePcm());
 
     const ctx = new AudioContext({ sampleRate: rate });
     const buf = ctx.createBuffer(1, samples.length, rate);

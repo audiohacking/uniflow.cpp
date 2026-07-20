@@ -76,6 +76,9 @@ endif()
 if (EMSCRIPTEN AND UNIFLOW_WEB)
     add_executable(uniflow-web src/web_api.cpp)
     target_link_libraries(uniflow-web PRIVATE uniflow_audio_core)
+    # Use ASYNCIFY (not JSPI): WebGPU WaitAny needs to suspend, and JSPI
+    # requires WebAssembly.promising + embind async() wrappers — fragile on
+    # stock Chrome. ASYNCIFY works without browser flags.
     target_link_options(uniflow-web PRIVATE
         "SHELL:-sALLOW_MEMORY_GROWTH=1"
         "SHELL:-sINITIAL_MEMORY=536870912"
@@ -83,6 +86,8 @@ if (EMSCRIPTEN AND UNIFLOW_WEB)
         "SHELL:-sFORCE_FILESYSTEM=1"
         "SHELL:-sENVIRONMENT=web"
         "SHELL:--bind"
+        "SHELL:-sASYNCIFY"
+        "SHELL:-sASYNCIFY_STACK_SIZE=1048576"
         "SHELL:-sEXPORTED_RUNTIME_METHODS=['FS','HEAPF32','UTF8ToString']"
     )
     set_target_properties(uniflow-web PROPERTIES

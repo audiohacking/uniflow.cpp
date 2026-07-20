@@ -64,7 +64,7 @@ jobs:
             -DUNIFLOW_CUDA=OFF \
             -DUNIFLOW_BUILD_TESTS=OFF \
             -DGGML_WEBGPU=ON \
-            -DGGML_WEBGPU_JSPI=ON \
+            -DGGML_WEBGPU_JSPI=OFF \
             -DGGML_OPENMP=OFF \
             -DEMDAWNWEBGPU_DIR="${{ github.workspace }}/third_party/emdawnwebgpu_pkg"
 
