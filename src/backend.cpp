@@ -44,6 +44,12 @@ BackendPair backend_init(const char* name) {
                    strcasecmp(env_backend, "CUDA") == 0 ||
                    strcasecmp(env_backend, "WebGPU") == 0) {
             bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_GPU, nullptr);
+            if (!bp.backend) {
+                // Unified-memory CUDA devices (Jetson, GB10, ...) register as
+                // IGPU, not GPU. Metal/WebGPU always report GPU, so this is a
+                // no-op there.
+                bp.backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_IGPU, nullptr);
+            }
             if (!bp.backend && strcasecmp(env_backend, "WebGPU") == 0) {
                 bp.backend = ggml_backend_init_by_name("WebGPU", nullptr);
             }
@@ -76,11 +82,13 @@ BackendPair backend_init(const char* name) {
         throw std::runtime_error("No GGML backend available");
     }
 
-    // Check if we got a GPU backend
+    // Check if we got a GPU backend. Metal/WebGPU always report GPU; some
+    // unified-memory CUDA devices (Jetson, GB10, ...) report IGPU instead.
     ggml_backend_dev_t dev = ggml_backend_get_device(bp.backend);
     if (dev) {
         enum ggml_backend_dev_type dev_type = ggml_backend_dev_type(dev);
-        bp.has_gpu = (dev_type == GGML_BACKEND_DEVICE_TYPE_GPU);
+        bp.has_gpu = (dev_type == GGML_BACKEND_DEVICE_TYPE_GPU ||
+                      dev_type == GGML_BACKEND_DEVICE_TYPE_IGPU);
     }
 
     std::fprintf(stderr, "[%s] primary backend: %s%s\n",
