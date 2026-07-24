@@ -59,28 +59,12 @@ Each pack also includes VAE + instructions + tokenizer (~93 MB).
 
 ## Performance (Q8)
 
-Measured on **Apple M4** (Metal): DiT **Q8_0** + pack T5, **5 s** of audio,
-**25** steps, CFG **5.0**, sway **-1**. Generation time only (after weights loaded).
+Benchmark: DiT **Q8_0** + pack T5, **5 s** of audio, **25** steps, CFG **5.0**, sway **-1**. 
 
-| Model | Wall time | vs audio | DiT |
+| Platform | Wall time | vs audio | DiT |
 |-------|-----------|----------|-----|
-| **small** Q8 | **~3.6 s** | **~1.4× realtime** | ~110 ms/step |
-| **base** Q8 | **~9 s** | ~0.55× realtime | ~330 ms/step |
-| **large** Q8 | **~14 s** | ~0.36× realtime | ~520 ms/step |
-
-Small Q8 is the sweet spot for snappy demos — a 5 s clip finishes in under 4 s.
-Base/Large trade a few more seconds for higher capacity. Numbers vary with
-steps, duration, and GPU; CUDA/CPU builds will differ.
-
-Measured on **NVIDIA GB10** (CUDA, unified-memory ARM SoC): same settings —
-DiT **Q8_0** + pack T5, **5 s** of audio, **25** steps, CFG **5.0**, sway **-1**.
-Generation time only (after weights loaded).
-
-| Model | Wall time | vs audio | DiT |
-|-------|-----------|----------|-----|
-| **small** Q8 | **~1.05 s** | **~4.8× realtime** | ~35 ms/step |
-| **base** Q8 | **~1.7 s** | ~2.9× realtime | ~61 ms/step |
-| **large** Q8 | **~2.3 s** | ~2.2× realtime | ~84 ms/step |
+| GB10 (CUDA)      |      ~1.7 s       |  ~2.9x   |  ~61 ms  |
+| M3 Ultra (Metal) |      ~2.2 s       |  ~2.2x   |  ~77 ms  |                                                                                       
 
 ## Generate
 
